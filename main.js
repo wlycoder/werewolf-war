@@ -672,6 +672,7 @@ function init() {
     await newGame();
   });
   $('#btn-create').addEventListener('click', () => openDeckEditor(null));
+  initMultiplayerUI();
   $('#btn-import').addEventListener('click', () => showImportDialog());
   $('#btn-about').addEventListener('click', () => $('#about-overlay').classList.remove('hidden'));
   $('#btn-about-close').addEventListener('click', () => $('#about-overlay').classList.add('hidden'));
@@ -859,5 +860,126 @@ function waitForEvalGameEnd() {
       else setTimeout(check, 200);
     };
     check();
+  });
+}
+
+/* =========================================================
+   ★ 联机 UI
+   ========================================================= */
+function initMultiplayerUI() {
+  const overlay = $('#multiplayer-overlay');
+  if (!overlay) { console.warn('[net] 未找到联机浮层'); return; }
+
+  const stepChoose     = $('#mp-step-choose');
+  const stepJoin       = $('#mp-step-join');
+  const stepWait       = $('#mp-step-wait');
+  const stepConnected  = $('#mp-step-connected');
+  const statusEl       = $('#mp-status');
+  const roomShowEl     = $('#mp-room-show');
+
+  const showStep = which => {
+    [stepChoose, stepJoin, stepWait, stepConnected].forEach(el => el.classList.add('hidden'));
+    which.classList.remove('hidden');
+  };
+  const setStatus = text => { if (statusEl) statusEl.textContent = text; };
+
+  /* 打开浮层 */
+  $('#btn-multiplayer').addEventListener('click', () => {
+    showStep(stepChoose);
+    overlay.classList.remove('hidden');
+  });
+
+  /* 关闭浮层 */
+  const closeOverlay = () => {
+    overlay.classList.add('hidden');
+    /* 如果已经连上，不断开；只关闭浮层 */
+  };
+  $('#mp-btn-close').addEventListener('click', closeOverlay);
+
+  /* 创建房间 */
+  $('#mp-btn-create').addEventListener('click', () => {
+    showStep(stepWait);
+    roomShowEl.textContent = '------';
+    setStatus('正在创建房间…');
+    netCreateRoom(
+      code => {
+        roomShowEl.textContent = code;
+        setStatus('等待好友加入…');
+      },
+      err => {
+        setStatus('❌ 创建失败：' + (err && err.message ? err.message : '未知错误'));
+      }
+    );
+  });
+
+  /* 复制房间号 */
+  $('#mp-btn-copy').addEventListener('click', () => {
+    const code = netGetRoomCode();
+    if (!code) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(() => alert('✅ 已复制房间号：' + code));
+    } else {
+      prompt('请手动复制房间号：', code);
+    }
+  });
+
+  /* 取消 */
+  $('#mp-btn-cancel').addEventListener('click', () => {
+    netDestroy();
+    showStep(stepChoose);
+  });
+
+  /* 加入房间 */
+  $('#mp-btn-join').addEventListener('click', () => {
+    showStep(stepJoin);
+    const input = $('#mp-room-input');
+    if (input) { input.value = ''; input.focus(); }
+  });
+  $('#mp-btn-back-choose').addEventListener('click', () => showStep(stepChoose));
+
+  $('#mp-btn-join-go').addEventListener('click', () => {
+    const input = $('#mp-room-input');
+    const code = (input && input.value || '').trim().toUpperCase();
+    if (code.length !== 6) { alert('房间号必须是 6 位'); return; }
+    showStep(stepWait);
+    roomShowEl.textContent = code;
+    setStatus('正在连接主机…');
+    netJoinRoom(code,
+      () => { /* 由 onConnected 回调统一处理 */ },
+      err => setStatus('❌ 连接失败：' + (err && err.message ? err.message : '未知错误'))
+    );
+  });
+
+  /* 断线 */
+  $('#mp-btn-disconnect').addEventListener('click', () => {
+    netDestroy();
+    showStep(stepChoose);
+  });
+
+  /* 网络事件 */
+  onNetConnected(role => {
+    console.log('[net] 已连接，角色：', role);
+    if (role === 'host') {
+      /* 主机等客机连上后进入游戏 */
+      $('#mp-connected-text').textContent = '✅ 客机已加入';
+    } else {
+      $('#mp-connected-text').textContent = '✅ 已连接到主机';
+    }
+    showStep(stepConnected);
+  });
+
+  onNetMessage(data => {
+    console.log('[net] 收到消息：', data);
+    /* TODO: 后续在这里处理游戏消息 */
+  });
+
+  onNetClose(() => {
+    console.warn('[net] 连接已断开');
+    alert('⚠️ 与对方的连接已断开');
+    showStep(stepChoose);
+  });
+
+  onNetError(err => {
+    console.error('[net] 网络错误', err);
   });
 }

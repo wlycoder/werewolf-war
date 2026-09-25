@@ -2313,3 +2313,15 @@ body.no-bg-anim .danmaku-layer {
   65%  { opacity: 1; transform: scale(1.05) rotate(-5deg); }
   100% { opacity: 0; transform: scale(1.4) translateY(-20px) rotate(15deg); }
 }
+
+/* =========================================================
+   ★ 联机浮层
+   ========================================================= */
+#multiplayer-overlay .overlay-box {
+  min-width: 460px;
+}
+#multiplayer-overlay .hidden { display: none !important; }
+#mp-room-input:focus {
+  border-color: #e8c86a !important;
+  box-shadow: 0 0 16px rgba(232,200,106,.35);
+}
