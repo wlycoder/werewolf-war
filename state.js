@@ -387,7 +387,7 @@ function endGame(winner) {
 }
 
 /* =========================================================
-   ★ 联机序列化 / 反序列化
+  ★ 联机序列化 / 反序列化
    ========================================================= */
 function serializeG(g) {
   if (!g) return null;
@@ -396,6 +396,13 @@ function serializeG(g) {
     units: g.units,
     turn: g.turn,
     gameOver: g.gameOver,
+    /* ★ 选择状态（让客机同步高亮） */
+    selectedCardIdx: g.selectedCardIdx,
+    selectedUid: g.selected ? g.selected.uid : null,
+    summonHighlights: g.summonHighlights,
+    moveHighlights: g.moveHighlights,
+    attackHighlights: g.attackHighlights,
+    /* 策 / 统计 */
     activeSchemes: g.activeSchemes,
     stats: g.stats,
     aiDeckName: g.aiDeckName,
@@ -426,8 +433,12 @@ function deserializeG(obj, mySide, net) {
     turn: obj.turn,
     gameOver: obj.gameOver,
     busy: false,
-    selected: null, selectedCardIdx: null,
-    summonHighlights: [], moveHighlights: [], attackHighlights: [],
+    /* ★ 恢复选择状态 */
+    selected: obj.selectedUid != null ? (unitMap.get(obj.selectedUid) || null) : null,
+    selectedCardIdx: obj.selectedCardIdx != null ? obj.selectedCardIdx : null,
+    summonHighlights: obj.summonHighlights || [],
+    moveHighlights: obj.moveHighlights || [],
+    attackHighlights: obj.attackHighlights || [],
     choiceMode: null, pendingTactic: null,
     activeSchemes: obj.activeSchemes,
     stats: obj.stats,

@@ -91,21 +91,31 @@ function renderBoard() {
   let fxLayer = boardEl.querySelector('#fx-layer');
   if (!fxLayer) { fxLayer = document.createElement('div'); fxLayer.id = 'fx-layer'; boardEl.appendChild(fxLayer); }
 
+  /* ★ 视角翻转：控制狼穴方（ai）时，棋盘垂直翻转 */
+  const flip = (G.mySide === 'ai');
+
   const choiceUids = (G.choiceMode && G.choiceMode.active)
     ? new Set(G.choiceMode.candidates.map(u => u.uid)) : null;
   const choiceColor = (G.choiceMode && G.choiceMode.active)
     ? (G.choiceMode.color || 'white') : 'white';
 
+  /* 单元格按逻辑坐标顺序创建，通过 grid-row/grid-column 放到显示位置 */
   for (let r = 0; r < BOARD_ROWS; r++) {
     for (let c = 0; c < BOARD_COLS; c++) {
       const cell = document.createElement('div');
       cell.className = 'cell';
+      /* 区域配色仍按逻辑坐标 */
       if (r <= 1) cell.classList.add('zone-ai');
       else if (r >= BOARD_ROWS - 2) cell.classList.add('zone-player');
       else cell.classList.add('zone-mid');
       if (G.summonHighlights.some(h => h.r === r && h.c === c)) cell.classList.add('hl-summon');
       if (G.moveHighlights.some(h => h.r === r && h.c === c)) cell.classList.add('hl-move');
       if (G.attackHighlights.some(h => h.r === r && h.c === c)) cell.classList.add('hl-attack');
+
+      /* ★ 显示位置（翻转时上下颠倒） */
+      const displayRow = flip ? (BOARD_ROWS - 1 - r) : r;
+      cell.style.gridRow = String(displayRow + 1);
+      cell.style.gridColumn = String(c + 1);
 
       const u = G.board[r][c];
       if (!u) cell.classList.add('cell-empty');
@@ -161,6 +171,7 @@ function renderBoard() {
         }
         cell.appendChild(el);
       }
+      /* ★ 点击事件仍使用逻辑坐标 */
       cell.addEventListener('click', () => onCellClick(r, c));
       boardEl.appendChild(cell);
     }

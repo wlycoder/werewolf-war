@@ -153,16 +153,20 @@ async function hostHandleGuestAction(action) {
   if (G.gameOver) return;
   if (G.turn === G.mySide) return;
   const a = action;
-  if (a.type === 'handClick') {
-    await onHandClick(a.idx, G.turn);
-  } else if (a.type === 'cellClick') {
-    await onCellClick(a.r, a.c, G.turn);
-  } else if (a.type === 'endTurn') {
-    if (G.turn !== G.mySide) endTurn();
+  try {
+    if (a.type === 'handClick') {
+      await onHandClick(a.idx, G.turn);
+    } else if (a.type === 'cellClick') {
+      await onCellClick(a.r, a.c, G.turn);
+    } else if (a.type === 'endTurn') {
+      if (G.turn !== G.mySide) endTurn();
+    }
+  } catch (err) {
+    console.error('[net] 处理客机操作异常', err);
   }
-  setTimeout(() => hostBroadcastState(), 250);
+  /* ★ 立即广播（含选择状态），客机才能看到高亮 */
+  hostBroadcastState();
 }
-
 /* 客机：发送操作 */
 function guestSendAction(action) {
   if (!G || !G.net || G.net.mode !== 'guest') return false;

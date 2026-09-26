@@ -2325,3 +2325,15 @@ body.no-bg-anim .danmaku-layer {
   border-color: #e8c86a !important;
   box-shadow: 0 0 16px rgba(232,200,106,.35);
 }
+
+/* =========================================================
+   ★ 棋盘显式网格定位（支持翻转）
+   ========================================================= */
+.board {
+  grid-auto-flow: row;   /* 保持默认行为 */
+}
+.board .cell {
+  /* 显式定位由 JS 的 grid-row / grid-column 控制 */
+  min-width: 0;
+  min-height: 0;
+}
