@@ -881,6 +881,9 @@ function waitForEvalGameEnd() {
   });
 }
 
+let _guestDeck = null;
+let _guestDeckName = '';
+let _gameStarted = false;
 /* =========================================================
    ★ 联机 UI + 游戏启动
    ========================================================= */
@@ -902,6 +905,10 @@ function initMultiplayerUI() {
   const setStatus = text => { if (statusEl) statusEl.textContent = text; };
 
   document.getElementById('btn-multiplayer').addEventListener('click', () => {
+    /* ★ 重置状态 */
+    _guestDeck = null;
+    _guestDeckName = '';
+    _gameStarted = false;
     showStep(stepChoose);
     overlay.classList.remove('hidden');
   });
@@ -952,24 +959,54 @@ function initMultiplayerUI() {
 
   document.getElementById('mp-btn-disconnect').addEventListener('click', () => {
     netDestroy();
+    _guestDeck = null;
+    _guestDeckName = '';
+    _gameStarted = false;
     showStep(stepChoose);
   });
 
-  /* 网络事件 */
+    /* 网络事件 */
   onNetConnected(role => {
     console.log('[net] 已连接，角色：', role);
     if (role === 'host') {
-      document.getElementById('mp-connected-text').textContent = '✅ 客机已加入，准备开始…';
+      document.getElementById('mp-connected-text').textContent = '✅ 客机已加入，等待上传卡组…';
       showStep(stepConnected);
-      setTimeout(() => startNetworkedGameAsHost(), 500);
+      /* 3 秒超时兜底：若迟迟收不到客机卡组，用主机卡组开始 */
+      setTimeout(() => {
+        if (!_gameStarted) {
+          console.warn('[net] 未收到客机卡组，使用主机卡组兜底');
+          startNetworkedGameAsHost();
+        }
+      }, 3000);
     } else {
-      document.getElementById('mp-connected-text').textContent = '✅ 已连接到主机，等待主机开始…';
+      document.getElementById('mp-connected-text').textContent = '✅ 已连接，上传卡组中…';
       showStep(stepConnected);
+      /* ★ 客机：立即把自己的卡组发给主机 */
+      const decks = loadDecks();
+      const activeId = getActiveDeckId();
+      const active = decks.find(d => d.id === activeId) || decks[0];
+      const deck = getActiveDeckCards();
+      netSend({
+        type: 'guestDeck',
+        deck: deck,
+        deckName: active ? active.name : '我的卡组'
+      });
+      console.log('[net] 已上传客机卡组:', active ? active.name : '未知', '共', deck.length, '张');
     }
   });
 
   onNetMessage(data => {
     if (!data || !data.type) return;
+
+    /* ★ 主机：收到客机卡组 → 记录并开局 */
+    if (data.type === 'guestDeck' && netIsHost()) {
+      _guestDeck = data.deck;
+      _guestDeckName = data.deckName || '对手';
+      console.log('[net] 收到客机卡组:', _guestDeckName, '共', _guestDeck.length, '张');
+      if (!_gameStarted) startNetworkedGameAsHost();
+      return;
+    }
+
     if (data.type === 'init' && data.for === 'guest') {
       /* 客机初始化 */
       G = deserializeG(data.state, data.mySide, { mode: 'guest' });
@@ -1007,21 +1044,53 @@ function initMultiplayerUI() {
   });
 }
 
-/* 主机：掷硬币决定角色，启动游戏 */
+/* 主机：等待客机卡组后启动游戏 */
 async function startNetworkedGameAsHost() {
   if (!netIsHost()) return;
+  if (_gameStarted) return;
+  _gameStarted = true;
+
   const hostMySide = Math.random() < 0.5 ? 'player' : 'ai';
   const guestMySide = oppSide(hostMySide);
 
+  /* 主机卡组 */
+  const hostDeck = getActiveDeckCards();
+  const hostDeckName = (() => {
+    const decks = loadDecks();
+    const activeId = getActiveDeckId();
+    const d = decks.find(x => x.id === activeId);
+    return d ? d.name : '主机';
+  })();
+
+  /* 客机卡组（兜底：若没收到，用主机卡组） */
+  const guestDeck = (_guestDeck && _guestDeck.length) ? _guestDeck : hostDeck;
+  const guestDeckName = _guestDeckName || '对手';
+
+  console.log('[net] 开局 — 主机方：', hostMySide, '主机卡组：', hostDeckName,
+              '客机卡组：', guestDeckName);
+
   document.getElementById('multiplayer-overlay').classList.add('hidden');
 
-  /* 建立 G（主机权威） */
-  await newGame({
+  const opts = {
     mySide: hostMySide,
     net: { mode: 'host' },
     firstPlayer: 'player',   /* 村庄先手 */
     skipMulligan: true
-  });
+  };
+
+  if (hostMySide === 'player') {
+    /* 主机是村庄（player），客机是狼穴（ai） */
+    opts.playerDeck = hostDeck;
+    opts.aiDeck = guestDeck;
+    opts.aiDeckName = guestDeckName;
+  } else {
+    /* 主机是狼穴（ai），客机是村庄（player） */
+    opts.playerDeck = guestDeck;
+    opts.aiDeck = hostDeck;
+    opts.aiDeckName = hostDeckName;
+  }
+
+  await newGame(opts);
 
   /* 广播初始状态给客机 */
   netSend({

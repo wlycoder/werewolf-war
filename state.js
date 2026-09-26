@@ -136,8 +136,15 @@ async function newGame(opts = {}) {
     if (!check.valid) playerIds = normalizeDeck(playerIds);
     const playerCards = playerIds.map(id => ({ ...CARD_MAP[id] }));
 
-    const aiTemplate = AI_DECKS[Math.floor(Math.random() * AI_DECKS.length)];
-    const aiCards = aiTemplate.cards.map(id => ({ ...CARD_MAP[id] }));
+    let aiTemplate, aiCards;
+    if (opts.aiDeck && Array.isArray(opts.aiDeck) && opts.aiDeck.length) {
+      const aiIds = opts.aiDeck.slice();
+      aiTemplate = { name: opts.aiDeckName || '好友卡组', cards: aiIds };
+      aiCards = aiIds.map(id => ({ ...CARD_MAP[id] }));
+    } else {
+      aiTemplate = AI_DECKS[Math.floor(Math.random() * AI_DECKS.length)];
+      aiCards = aiTemplate.cards.map(id => ({ ...CARD_MAP[id] }));
+    }
 
     /* 联机：村庄先手；单机：随机 */
     let firstPlayer;
@@ -195,7 +202,7 @@ async function newGame(opts = {}) {
     if (G.gameOver) { gameStarting = false; return; }
 
     render();
-    log(`🐺 狼人使用卡组：${aiTemplate.name}`, 'ai');
+    if (!opts.net) log(`🐺 狼人使用卡组：${aiTemplate.name}`, 'ai');
     if (firstPlayer === 'player') log(`🎲 村庄先手`, 'player');
     else log(`🎲 狼穴先手`, 'player');
     startTurn(firstPlayer);
