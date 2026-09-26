@@ -1,5 +1,5 @@
 /* =========================================================
-   main.js — 初始化、菜单、卡组编辑
+   main.js — 初始化、菜单、卡组编辑、联机 UI
    ========================================================= */
 let editing = { id: null, name: '', icon: '🃏', cards: [] };
 let currentTab = 'unit';
@@ -20,7 +20,8 @@ const RULE_TICKER_LINES = [
   '🎯 射程：带「射程+X」的卡牌可攻击更远的敌人',
   '🟣 行动花费：单位左下角紫色圆圈显示每次行动消耗的法力',
   '🔢 卡牌编号：每张卡牌拥有唯一的 16 进制编号',
-  '🏘️ 舍：只能部署在友方单位周围 3×3 范围内，无法移动；点击可消耗法力激活'
+  '🏘️ 舍：只能部署在友方单位周围 3×3 范围内，无法移动；点击可消耗法力激活',
+  '🌐 联机：村庄先手；角色随机分配；双方都会播放动画'
 ];
 let _ruleTickerIdx = 0, _ruleTickerTimer = null;
 function startRuleTicker() {
@@ -37,8 +38,12 @@ function startRuleTicker() {
   _ruleTickerTimer = setInterval(showNext, 15000);
 }
 
+/* =========================================================
+   弹幕
+   ========================================================= */
 const DANMAKU_DEFAULT = ['我已经0秒没有听到11连败笑话了','看啊看啊，这是谁来了？','向您致敬！','那是个错误','幸运女神不在我这边','到我怀里来！'];
 let _danmakuList = [], _danmakuTimer = null, _danmakuIdx = 0;
+
 async function loadDanmakuList() {
   /* ① sub.txt */
   try {
@@ -73,6 +78,7 @@ async function loadDanmakuList() {
   console.warn('[danmaku] sub.txt / sub.js 均不可用，使用内置默认弹幕');
   _danmakuList = DANMAKU_DEFAULT.slice();
 }
+
 function loadDanmakuScript() {
   return new Promise(resolve => {
     window.DANMAKU_LIST = null;
@@ -83,6 +89,7 @@ function loadDanmakuScript() {
     document.head.appendChild(s);
   });
 }
+
 function spawnDanmaku() {
   if (!BG_SETTINGS.bgEnabled) return;
   const menu = document.getElementById('screen-menu');
@@ -113,6 +120,9 @@ function initDanmaku() {
   });
 }
 
+/* =========================================================
+   背景设置
+   ========================================================= */
 const BG_DEFAULTS = { spawnInterval: 2.8, driftRange: 160, bgEnabled: true };
 let BG_SETTINGS = { ...BG_DEFAULTS };
 function loadBGSettings() {
@@ -178,7 +188,7 @@ function initFlyingCards() {
 }
 
 /* =========================================================
-   ★ 音效 UI 同步
+   ★ 音乐 UI 同步
    ========================================================= */
 function initMusicUI() {
   const slider = document.getElementById('setting-music');
@@ -298,41 +308,43 @@ function askPlayerChooseHutReward(cards) {
 }
 
 /* =========================================================
-   ★ 使用"计"牌（支持取消回滚）
+   ★ 使用"计"牌（支持取消回滚 + 联机）
    ========================================================= */
 async function useTacticCard(idx) {
-  if (!G || G.gameOver || G.turn !== 'player') return;
+  if (!G || G.gameOver) return;
+  const mySide = G.mySide;
+  if (G.turn !== mySide) return;
   if (G.busy || G.choiceMode || mulliganState) return;
-  const card = G.player.hand[idx];
+
+  const me = G[mySide];
+  const card = me.hand[idx];
   if (!card || card.type !== 'tactic') return;
-  if (card.summonCost > G.player.mana) { log('法力不足，无法使用该计', 'player'); return; }
+  if (card.summonCost > me.mana) { log('法力不足，无法使用该计', mySide); return; }
 
   const savedCard = card;
-  G.player.mana -= card.summonCost;
-  G.player.hand.splice(idx, 1);
-  log(`📜 你使用了计策：${card.name}`, 'player');
+  me.mana -= card.summonCost;
+  me.hand.splice(idx, 1);
+  log(`📜 ${mySide === 'player' ? '🔵' : '🔴'} 使用了计策：${card.name}`, mySide);
   clearSelection();
 
-  /* ★ 记录待完成的计，方便取消时回滚 */
   G.pendingTactic = { card: savedCard, cost: card.summonCost, cancelled: false };
 
   render();
 
-  await triggerSchemesOnEnemyTactic('player', card);
+  await triggerSchemesOnEnemyTactic(mySide, card);
 
   if (card.effect && card.effect.trigger) {
     const fn = TACTIC_REGISTRY[card.effect.trigger];
     if (typeof fn === 'function') {
-      try { await fn(card); } catch (err) { console.error(err); log(`⚠️ ${card.name} 使用异常`, 'player'); }
+      try { await fn(card); } catch (err) { console.error(err); log(`⚠️ ${card.name} 使用异常`, mySide); }
     }
   }
 
-  /* ★ 若因取消而中断，回滚卡牌和法力 */
   if (G.pendingTactic && G.pendingTactic.cancelled) {
-    G.player.mana += G.pendingTactic.cost;
-    if (G.player.hand.length < HAND_LIMIT) {
-      G.player.hand.push(savedCard);
-      log(`↩️ 已取消「${card.name}」，返还 ${G.pendingTactic.cost} 法力`, 'player');
+    me.mana += G.pendingTactic.cost;
+    if (me.hand.length < HAND_LIMIT) {
+      me.hand.push(savedCard);
+      log(`↩️ 已取消「${card.name}」，返还 ${G.pendingTactic.cost} 法力`, mySide);
     }
   }
   G.pendingTactic = null;
@@ -672,7 +684,6 @@ function init() {
     await newGame();
   });
   $('#btn-create').addEventListener('click', () => openDeckEditor(null));
-  initMultiplayerUI();
   $('#btn-import').addEventListener('click', () => showImportDialog());
   $('#btn-about').addEventListener('click', () => $('#about-overlay').classList.remove('hidden'));
   $('#btn-about-close').addEventListener('click', () => $('#about-overlay').classList.add('hidden'));
@@ -742,12 +753,16 @@ function init() {
     });
   });
   $('#btn-end-turn').addEventListener('click', () => {
-    if (G && G.turn === 'player' && !G.gameOver && !G.choiceMode && !mulliganState) endTurn();
+    if (!G) return;
+    if (G.gameOver || G.choiceMode || mulliganState) return;
+    if (G.turn !== G.mySide) return;
+    endTurn();
   });
   $('#btn-quit').addEventListener('click', () => {
     if (G && !G.gameOver && !confirm('确定要退出当前对局吗？')) return;
     try { if (G && G.choiceMode) { const r = G.choiceMode.resolve; G.choiceMode = null; hideChoiceBanner(); if (r) r(null); } } catch (e) {}
     try { if (mulliganState) { const r = mulliganState.resolve; mulliganState = null; const el = $('#mulligan-overlay'); if (el) { el.classList.add('hidden'); el.style.display = ''; } if (r) r(); } } catch (e) {}
+    try { netDestroy(); } catch (e) {}
     G = null; gameStarting = false;
     const o = $('#overlay'); if (o) o.classList.add('hidden');
     const m = $('#mulligan-overlay'); if (m) { m.classList.add('hidden'); m.style.display = ''; }
@@ -757,6 +772,7 @@ function init() {
   $('#overlay-btn').addEventListener('click', () => {
     try { if (G && G.choiceMode) { const r = G.choiceMode.resolve; G.choiceMode = null; hideChoiceBanner(); if (r) r(null); } } catch (e) {}
     try { if (mulliganState) { const r = mulliganState.resolve; mulliganState = null; const el = $('#mulligan-overlay'); if (el) { el.classList.add('hidden'); el.style.display = ''; } if (r) r(); } } catch (e) {}
+    try { netDestroy(); } catch (e) {}
     G = null; gameStarting = false;
     const o = $('#overlay'); if (o) o.classList.add('hidden');
     const m = $('#mulligan-overlay'); if (m) { m.classList.add('hidden'); m.style.display = ''; }
@@ -767,12 +783,11 @@ function init() {
     if (typeof window.confirmMulligan === 'function') window.confirmMulligan();
   });
 
-  /* ★ 取消选择按钮 */
+  /* 取消选择按钮 */
   const cancelBtn = document.getElementById('btn-cancel-selection');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', () => {
       if (!G) return;
-      /* ★ 若正在等待计的选择目标 → 标记取消 */
       if (G.pendingTactic) G.pendingTactic.cancelled = true;
       if (G.choiceMode && G.choiceMode.active) {
         const r = G.choiceMode.resolve;
@@ -784,6 +799,9 @@ function init() {
       render();
     });
   }
+
+  /* 联机 UI */
+  initMultiplayerUI();
 }
 document.addEventListener('DOMContentLoaded', init);
 
@@ -864,94 +882,75 @@ function waitForEvalGameEnd() {
 }
 
 /* =========================================================
-   ★ 联机 UI
+   ★ 联机 UI + 游戏启动
    ========================================================= */
 function initMultiplayerUI() {
-  const overlay = $('#multiplayer-overlay');
+  const overlay = document.getElementById('multiplayer-overlay');
   if (!overlay) { console.warn('[net] 未找到联机浮层'); return; }
 
-  const stepChoose     = $('#mp-step-choose');
-  const stepJoin       = $('#mp-step-join');
-  const stepWait       = $('#mp-step-wait');
-  const stepConnected  = $('#mp-step-connected');
-  const statusEl       = $('#mp-status');
-  const roomShowEl     = $('#mp-room-show');
+  const stepChoose    = document.getElementById('mp-step-choose');
+  const stepJoin      = document.getElementById('mp-step-join');
+  const stepWait      = document.getElementById('mp-step-wait');
+  const stepConnected = document.getElementById('mp-step-connected');
+  const statusEl      = document.getElementById('mp-status');
+  const roomShowEl    = document.getElementById('mp-room-show');
 
   const showStep = which => {
-    [stepChoose, stepJoin, stepWait, stepConnected].forEach(el => el.classList.add('hidden'));
-    which.classList.remove('hidden');
+    [stepChoose, stepJoin, stepWait, stepConnected].forEach(el => el && el.classList.add('hidden'));
+    which && which.classList.remove('hidden');
   };
   const setStatus = text => { if (statusEl) statusEl.textContent = text; };
 
-  /* 打开浮层 */
-  $('#btn-multiplayer').addEventListener('click', () => {
+  document.getElementById('btn-multiplayer').addEventListener('click', () => {
     showStep(stepChoose);
     overlay.classList.remove('hidden');
   });
+  document.getElementById('mp-btn-close').addEventListener('click', () => overlay.classList.add('hidden'));
 
-  /* 关闭浮层 */
-  const closeOverlay = () => {
-    overlay.classList.add('hidden');
-    /* 如果已经连上，不断开；只关闭浮层 */
-  };
-  $('#mp-btn-close').addEventListener('click', closeOverlay);
-
-  /* 创建房间 */
-  $('#mp-btn-create').addEventListener('click', () => {
+  document.getElementById('mp-btn-create').addEventListener('click', () => {
     showStep(stepWait);
     roomShowEl.textContent = '------';
     setStatus('正在创建房间…');
     netCreateRoom(
-      code => {
-        roomShowEl.textContent = code;
-        setStatus('等待好友加入…');
-      },
-      err => {
-        setStatus('❌ 创建失败：' + (err && err.message ? err.message : '未知错误'));
-      }
+      code => { roomShowEl.textContent = code; setStatus('等待好友加入…'); },
+      err => setStatus('❌ 创建失败：' + (err?.message || '未知错误'))
     );
   });
 
-  /* 复制房间号 */
-  $('#mp-btn-copy').addEventListener('click', () => {
+  document.getElementById('mp-btn-copy').addEventListener('click', () => {
     const code = netGetRoomCode();
     if (!code) return;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
+    if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(code).then(() => alert('✅ 已复制房间号：' + code));
-    } else {
-      prompt('请手动复制房间号：', code);
-    }
+    } else prompt('请手动复制房间号：', code);
   });
 
-  /* 取消 */
-  $('#mp-btn-cancel').addEventListener('click', () => {
+  document.getElementById('mp-btn-cancel').addEventListener('click', () => {
     netDestroy();
     showStep(stepChoose);
   });
 
-  /* 加入房间 */
-  $('#mp-btn-join').addEventListener('click', () => {
+  document.getElementById('mp-btn-join').addEventListener('click', () => {
     showStep(stepJoin);
-    const input = $('#mp-room-input');
+    const input = document.getElementById('mp-room-input');
     if (input) { input.value = ''; input.focus(); }
   });
-  $('#mp-btn-back-choose').addEventListener('click', () => showStep(stepChoose));
+  document.getElementById('mp-btn-back-choose').addEventListener('click', () => showStep(stepChoose));
 
-  $('#mp-btn-join-go').addEventListener('click', () => {
-    const input = $('#mp-room-input');
-    const code = (input && input.value || '').trim().toUpperCase();
+  document.getElementById('mp-btn-join-go').addEventListener('click', () => {
+    const input = document.getElementById('mp-room-input');
+    const code = (input?.value || '').trim().toUpperCase();
     if (code.length !== 6) { alert('房间号必须是 6 位'); return; }
     showStep(stepWait);
     roomShowEl.textContent = code;
     setStatus('正在连接主机…');
     netJoinRoom(code,
-      () => { /* 由 onConnected 回调统一处理 */ },
-      err => setStatus('❌ 连接失败：' + (err && err.message ? err.message : '未知错误'))
+      () => {},
+      err => setStatus('❌ 连接失败：' + (err?.message || '未知错误'))
     );
   });
 
-  /* 断线 */
-  $('#mp-btn-disconnect').addEventListener('click', () => {
+  document.getElementById('mp-btn-disconnect').addEventListener('click', () => {
     netDestroy();
     showStep(stepChoose);
   });
@@ -960,26 +959,77 @@ function initMultiplayerUI() {
   onNetConnected(role => {
     console.log('[net] 已连接，角色：', role);
     if (role === 'host') {
-      /* 主机等客机连上后进入游戏 */
-      $('#mp-connected-text').textContent = '✅ 客机已加入';
+      document.getElementById('mp-connected-text').textContent = '✅ 客机已加入，准备开始…';
+      showStep(stepConnected);
+      setTimeout(() => startNetworkedGameAsHost(), 500);
     } else {
-      $('#mp-connected-text').textContent = '✅ 已连接到主机';
+      document.getElementById('mp-connected-text').textContent = '✅ 已连接到主机，等待主机开始…';
+      showStep(stepConnected);
     }
-    showStep(stepConnected);
   });
 
   onNetMessage(data => {
-    console.log('[net] 收到消息：', data);
-    /* TODO: 后续在这里处理游戏消息 */
+    if (!data || !data.type) return;
+    if (data.type === 'init' && data.for === 'guest') {
+      /* 客机初始化 */
+      G = deserializeG(data.state, data.mySide, { mode: 'guest' });
+      document.getElementById('multiplayer-overlay').classList.add('hidden');
+      document.getElementById('log').innerHTML = '';
+      document.getElementById('overlay').classList.add('hidden');
+      document.getElementById('mulligan-overlay').classList.add('hidden');
+      hideChoiceBanner();
+      showScreen('screen-game');
+      render();
+      log(`🐺 你控制：${data.mySide === 'player' ? '村庄（先手）' : '狼穴'}`, data.mySide);
+      return;
+    }
+    if (data.type === 'state') {
+      guestApplyState(data.state);
+      return;
+    }
+    if (data.type === 'event') {
+      guestQueueEvent(data.event);
+      return;
+    }
+    if (data.type === 'action') {
+      hostHandleGuestAction(data.action);
+      return;
+    }
   });
 
   onNetClose(() => {
     console.warn('[net] 连接已断开');
-    alert('⚠️ 与对方的连接已断开');
-    showStep(stepChoose);
+    if (G && !G.gameOver) alert('⚠️ 与对方的连接已断开');
   });
 
   onNetError(err => {
     console.error('[net] 网络错误', err);
   });
+}
+
+/* 主机：掷硬币决定角色，启动游戏 */
+async function startNetworkedGameAsHost() {
+  if (!netIsHost()) return;
+  const hostMySide = Math.random() < 0.5 ? 'player' : 'ai';
+  const guestMySide = oppSide(hostMySide);
+
+  document.getElementById('multiplayer-overlay').classList.add('hidden');
+
+  /* 建立 G（主机权威） */
+  await newGame({
+    mySide: hostMySide,
+    net: { mode: 'host' },
+    firstPlayer: 'player',   /* 村庄先手 */
+    skipMulligan: true
+  });
+
+  /* 广播初始状态给客机 */
+  netSend({
+    type: 'init',
+    for: 'guest',
+    mySide: guestMySide,
+    state: serializeG(G)
+  });
+
+  log(`🐺 你控制：${hostMySide === 'player' ? '村庄（先手）' : '狼穴'}`, hostMySide);
 }

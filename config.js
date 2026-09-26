@@ -344,3 +344,11 @@ function setMusicVolume(v) {
     _musicEl.volume = MUSIC_SETTINGS.enabled ? MUSIC_SETTINGS.volume : 0;
   }
 }
+
+/* =========================================================
+   ★ 联机辅助
+   ========================================================= */
+function oppSide(side) { return side === 'player' ? 'ai' : 'player'; }
+function isNetMode()   { return !!(G && G.net); }
+function isNetHost()   { return !!(G && G.net && G.net.mode === 'host'); }
+function isNetGuest()  { return !!(G && G.net && G.net.mode === 'guest'); }

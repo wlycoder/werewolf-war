@@ -20,7 +20,7 @@
 
   <div class="menu-main">
     <h1 class="game-title">狼村战记</h1>
-<p class="subtitle">WOLF VILLAGE CHRONICLES · 5 × 6</p>
+    <p class="subtitle">WOLF VILLAGE CHRONICLES · 5 × 5</p>
     <div class="menu-buttons">
       <button id="btn-start" class="btn btn-primary">开始游戏</button>
       <button id="btn-multiplayer" class="btn">🌐 联机对战</button>
@@ -42,6 +42,116 @@
   </div>
 </div>
 
+<div id="screen-deck" class="screen">
+  <header class="deck-header">
+    <h2>卡组编辑</h2>
+    <input id="deck-icon" placeholder="🃏" maxlength="4" title="卡组图标（1 个字符）">
+    <input id="deck-name" placeholder="卡组名称" maxlength="12">
+    <div class="spacer"></div>
+    <span id="deck-count">0 / 24</span>
+    <button id="btn-export-deck" class="btn" style="padding:9px 16px;font-size:13px;">导出</button>
+    <button id="btn-eval-deck" class="btn" style="padding:9px 16px;font-size:13px;border-color:#7dd3fc;color:#bae6fd;">📊 评估</button>
+    <button id="btn-save-deck" class="btn btn-primary" style="padding:9px 20px;font-size:14px;">保存卡组</button>
+    <button id="btn-back-menu" class="btn" style="padding:9px 20px;font-size:14px;">返回</button>
+  </header>
+  <div class="deck-body">
+    <div class="panel">
+      <div class="panel-header">
+        <h3>卡牌池</h3>
+        <div class="deck-tabs" id="deck-tabs">
+          <button class="deck-tab active" data-tab="unit">🛡️ 单位</button>
+          <button class="deck-tab" data-tab="hut">🏘️ 舍</button>
+          <button class="deck-tab" data-tab="tactic">📜 计</button>
+          <button class="deck-tab" data-tab="scheme">🚷 策</button>
+        </div>
+      </div>
+      <div id="card-pool" class="card-grid"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <h3>当前卡组（固定 24 张）</h3>
+      </div>
+      <div id="deck-cards" class="card-grid"></div>
+    </div>
+  </div>
+</div>
+
+<div id="screen-game" class="screen">
+
+  <div id="choice-banner" class="choice-banner hidden">
+    <span id="choice-banner-icon">🔮</span>
+    <span id="choice-banner-text">请选择</span>
+  </div>
+
+  <div class="game-layout">
+    <div class="board-area">
+      <div class="top-bar">
+        <div class="base-hp ai" id="top-left-base">
+          <span id="top-left-base-text">🌑 狼穴总部</span>
+          <span id="ai-base-hp">15</span>
+        </div>
+        <div id="turn-indicator" class="turn-indicator p-turn">你的回合</div>
+        <div class="base-hp player" id="top-right-base">
+          <span id="top-right-base-text">🏰 村庄总部</span>
+          <span id="player-base-hp">15</span>
+        </div>
+      </div>
+      <div id="board" class="board">
+        <div id="fx-layer"></div>
+      </div>
+      <div class="hand-area"><div id="hand" class="hand"></div></div>
+      <button id="btn-cancel-selection" class="cancel-selection-btn hidden">✕ 取消选择</button>
+    </div>
+    <aside class="game-sidebar">
+      <div class="mana-box">
+        <div class="mana-label">法力 <span id="mana-value">0/0</span></div>
+        <div class="mana-bar"><div class="mana-fill" id="mana-fill"></div></div>
+        <div class="mana-label" style="margin-top:8px; color:#fca5a5;">敌方 <span id="ai-mana-value">0/0</span></div>
+        <div class="mana-bar"><div class="mana-fill ai-mana-fill" id="ai-mana-fill"></div></div>
+      </div>
+      <div class="deck-info">🔵 你方牌库：<span id="deck-count-info">0</span></div>
+      <div class="deck-info">🔴 敌方牌库：<span id="ai-deck-count-info">0</span></div>
+      <div class="hand-count-info">
+        <div>🔵 你方手牌：<span id="player-hand-count">0</span> / <span id="hand-limit-player">7</span></div>
+        <div>🔴 敌方手牌：<span id="ai-hand-count">0</span> / <span id="hand-limit-ai">7</span></div>
+      </div>
+      <button id="btn-end-turn" class="btn btn-primary" style="padding:10px;font-size:14px;">结束回合</button>
+      <button id="btn-quit" class="btn" style="padding:8px;font-size:13px;">退出对局</button>
+      <div class="legend">
+        <span class="lg-player">🔵 你方</span>
+        <span class="lg-ai">🔴 敌方</span>
+      </div>
+      <div class="rule-info">
+        <b>词条速览</b>
+        <div class="rule-ticker">
+          <div class="rule-ticker-content" id="rule-ticker-content">加载中…</div>
+        </div>
+      </div>
+      <div id="log" class="log"></div>
+    </aside>
+  </div>
+
+  <div id="overlay" class="overlay hidden">
+    <div class="overlay-box" id="overlay-box">
+      <div class="result-icon" id="overlay-icon">🏆</div>
+      <h2 id="overlay-title">胜利</h2>
+      <p id="overlay-text"></p>
+      <div id="overlay-stats" class="result-stats"></div>
+      <button id="overlay-btn" class="btn btn-primary">返回主菜单</button>
+    </div>
+  </div>
+
+  <div id="mulligan-overlay" class="overlay overlay-mulligan hidden">
+    <div class="overlay-box overlay-box-mulligan">
+      <h2 class="mulligan-title">🔄 换牌阶段</h2>
+      <p class="mulligan-text">点击想要更换的卡牌（黄色高亮），再次点击取消。点击「确认」开始游戏。</p>
+      <div id="mulligan-hand" class="hand hand-mulligan"></div>
+      <button id="btn-mulligan-confirm" class="btn btn-primary">确认开始</button>
+    </div>
+  </div>
+
+</div>
+
 <!-- 联机浮层 -->
 <div id="multiplayer-overlay" class="overlay hidden">
   <div class="overlay-box" style="max-width: 520px;">
@@ -49,7 +159,8 @@
 
     <div id="mp-step-choose">
       <p style="color:#b9b1d4;font-size:13px;line-height:1.7;">
-        创建房间后把房间号告诉好友；或输入好友的房间号加入。
+        创建房间后把房间号告诉好友；或输入好友的房间号加入。<br>
+        <b style="color:#e8c86a;">村庄方先手</b>，由系统随机决定您控制哪一方。
       </p>
       <div style="display:flex;gap:12px;margin-top:6px;">
         <button id="mp-btn-create" class="btn btn-primary" style="flex:1;">🏠 创建房间</button>
@@ -94,111 +205,6 @@
   </div>
 </div>
 
-<div id="screen-deck" class="screen">
-  <header class="deck-header">
-    <h2>卡组编辑</h2>
-    <input id="deck-icon" placeholder="🃏" maxlength="4" title="卡组图标（1 个字符）">
-    <input id="deck-name" placeholder="卡组名称" maxlength="12">
-    <div class="spacer"></div>
-    <span id="deck-count">0 / 24</span>
-    <button id="btn-export-deck" class="btn" style="padding:9px 16px;font-size:13px;">导出</button>
-	<button id="btn-eval-deck" class="btn" style="padding:9px 16px;font-size:13px;border-color:#7dd3fc;color:#bae6fd;">📊 评估</button>
-    <button id="btn-save-deck" class="btn btn-primary" style="padding:9px 20px;font-size:14px;">保存卡组</button>
-    <button id="btn-back-menu" class="btn" style="padding:9px 20px;font-size:14px;">返回</button>
-  </header>
-  <div class="deck-body">
-    <div class="panel">
-      <div class="panel-header">
-        <h3>卡牌池</h3>
-        <div class="deck-tabs" id="deck-tabs">
-          <button class="deck-tab active" data-tab="unit">🛡️ 单位</button>
-          <button class="deck-tab" data-tab="hut">🏘️ 舍</button>
-          <button class="deck-tab" data-tab="tactic">📜 计</button>
-          <button class="deck-tab" data-tab="scheme">🚷 策</button>
-        </div>
-      </div>
-      <div id="card-pool" class="card-grid"></div>
-    </div>
-    <div class="panel">
-      <div class="panel-header">
-        <h3>当前卡组（固定 24 张）</h3>
-      </div>
-      <div id="deck-cards" class="card-grid"></div>
-    </div>
-  </div>
-</div>
-
-<div id="screen-game" class="screen">
-
-  <div id="choice-banner" class="choice-banner hidden">
-    <span id="choice-banner-icon">🔮</span>
-    <span id="choice-banner-text">请选择</span>
-  </div>
-
-  <div class="game-layout">
-    <div class="board-area">
-      <div class="top-bar">
-        <div class="base-hp ai">🌑 狼穴总部 <span id="ai-base-hp">15</span></div>
-        <div id="turn-indicator" class="turn-indicator p-turn">你的回合</div>
-        <div class="base-hp player">🏰 村庄总部 <span id="player-base-hp">15</span></div>
-      </div>
-      <div id="board" class="board">
-        <div id="fx-layer"></div>
-      </div>
-      <div class="hand-area"><div id="hand" class="hand"></div></div>
-      <button id="btn-cancel-selection" class="cancel-selection-btn hidden">✕ 取消选择</button>
-    </div>
-    <aside class="game-sidebar">
-		<div class="mana-box">
-  <div class="mana-label">法力 <span id="mana-value">0/0</span></div>
-  <div class="mana-bar"><div class="mana-fill" id="mana-fill"></div></div>
-  <div class="mana-label" style="margin-top:8px; color:#fca5a5;">敌方 <span id="ai-mana-value">0/0</span></div>
-  <div class="mana-bar"><div class="mana-fill ai-mana-fill" id="ai-mana-fill"></div></div>
-</div>
-	<div class="deck-info">🔵 你方牌库：<span id="deck-count-info">0</span></div>
-<div class="deck-info">🔴 敌方牌库：<span id="ai-deck-count-info">0</span></div>
-      <div class="hand-count-info">
-        <div>🔵 你方手牌：<span id="player-hand-count">0</span> / <span id="hand-limit-player">7</span></div>
-        <div>🔴 敌方手牌：<span id="ai-hand-count">0</span> / <span id="hand-limit-ai">7</span></div>
-      </div>
-      <button id="btn-end-turn" class="btn btn-primary" style="padding:10px;font-size:14px;">结束回合</button>
-      <button id="btn-quit" class="btn" style="padding:8px;font-size:13px;">退出对局</button>
-      <div class="legend">
-        <span class="lg-player">🔵 你方</span>
-        <span class="lg-ai">🔴 敌方</span>
-      </div>
-      <!-- ★ 逐条循环显示词条介绍（每 15s 切换一条） -->
-      <div class="rule-info">
-        <b>词条速览</b>
-        <div class="rule-ticker">
-          <div class="rule-ticker-content" id="rule-ticker-content">加载中…</div>
-        </div>
-      </div>
-      <div id="log" class="log"></div>
-    </aside>
-  </div>
-
-  <div id="overlay" class="overlay hidden">
-    <div class="overlay-box" id="overlay-box">
-      <div class="result-icon" id="overlay-icon">🏆</div>
-      <h2 id="overlay-title">胜利</h2>
-      <p id="overlay-text"></p>
-      <div id="overlay-stats" class="result-stats"></div>
-      <button id="overlay-btn" class="btn btn-primary">返回主菜单</button>
-    </div>
-  </div>
-
-  <div id="mulligan-overlay" class="overlay overlay-mulligan hidden">
-    <div class="overlay-box overlay-box-mulligan">
-      <h2 class="mulligan-title">🔄 换牌阶段</h2>
-      <p class="mulligan-text">点击想要更换的卡牌（黄色高亮），再次点击取消。点击「确认」开始游戏。</p>
-      <div id="mulligan-hand" class="hand hand-mulligan"></div>
-      <button id="btn-mulligan-confirm" class="btn btn-primary">确认开始</button>
-    </div>
-  </div>
-
-</div>
-
 <!-- 词条介绍浮层 -->
 <div id="about-overlay" class="overlay hidden">
   <div class="overlay-box" style="max-width: 780px; text-align: left;">
@@ -206,13 +212,11 @@
     <div class="about-content">
       <div class="about-item"><div class="about-kw">⚡ 迅捷</div><div class="about-desc">被召唤的回合即可立即行动。</div></div>
       <div class="about-item"><div class="about-kw">👣 疾行 X</div><div class="about-desc">每回合可额外行动 X 次（基础 1 次 + X）。</div></div>
-      <div class="about-item"><div class="about-kw">🛡 守护</div><div class="about-desc">同行友方单位或总部受到伤害时，伤害转移给本守卫（触发时显示 ⚔️ 特效）。</div></div>
+      <div class="about-item"><div class="about-kw">🛡 守护</div><div class="about-desc">同行友方单位或总部受到伤害时，伤害转移给本守卫（触发时显示 🛡 特效）。</div></div>
       <div class="about-item"><div class="about-kw">💀 亡语</div><div class="about-desc">离场时触发效果。</div></div>
       <div class="about-item"><div class="about-kw">🚫 禁言</div><div class="about-desc">被禁言的单位无法行动，回合结束时会自动解除。</div></div>
       <div class="about-item"><div class="about-kw">🔙 撤退</div><div class="about-desc">使一个单位向自己总部方向后退一行；无处可退则回到手牌。</div></div>
-      <div class="about-item"><div class="about-kw">🩸 血祭X</div><div class="about-desc">狼单位被召唤时必须选中 X 个友方民/神单位作为祭品（红色高亮），被选中的单位被献祭。</div></div>
-
-      <!-- ★ 完整反伤规则 -->
+      <div class="about-item"><div class="about-kw">🩸 血祭X</div><div class="about-desc">狼单位被召唤时必须选中 X 个友方民/神单位作为祭品。</div></div>
       <div class="about-item"><div class="about-kw">⚔ 反伤规则（完整）</div><div class="about-desc">
         · 神 → 神：受目标攻击力反伤<br>
         · 神 → 民：固定受 1 点反伤<br>
@@ -227,17 +231,18 @@
         · 狼 → 无：无反伤<br>
         · 民 → 狼：无法造成伤害，但受狼攻击力反伤
       </div></div>
-	<div class="about-item"><div class="about-kw">🃏 卡牌类型</div><div class="about-desc">
-  · <b>单位</b>：召唤到场上作战<br>
-  · <b>计</b>：一次性策略，直接打出产生效果<br>
-  · <b>策</b>：点击激活（蓝色高亮 ❔），敌方回合达成条件时触发（后从手牌移除）；未触发则下回合开始解除（❓，不返法力）
-</div></div>
-      <div class="about-item"><div class="about-kw">🎯 射程</div><div class="about-desc">默认射程 1 格；带「射程+X」的卡牌可攻击更远的敌人（显示在手牌/卡牌池中）。</div></div>
-      <div class="about-item"><div class="about-kw">🏳 阵营</div><div class="about-desc"><b style="color:#fde047">神</b> · <b style="color:#93c5fd">民</b> · <b style="color:#fb923c">狼</b> · <b style="color:#c4b5fd">无</b> —— 影响反伤规则。</div></div>
+      <div class="about-item"><div class="about-kw">🃏 卡牌类型</div><div class="about-desc">
+        · <b>单位</b>：召唤到场上作战<br>
+        · <b>计</b>：一次性策略，直接打出产生效果<br>
+        · <b>策</b>：点击激活（蓝色高亮 ❔），敌方回合达成条件时触发<br>
+        · <b>舍</b>：只能部署在友方单位周围 3×3 内，无法移动，点击消耗法力激活
+      </div></div>
+      <div class="about-item"><div class="about-kw">🎯 目标</div><div class="about-desc">指场上的单位和总部（村庄总部 / 狼穴总部）。</div></div>
+      <div class="about-item"><div class="about-kw">🎯 射程</div><div class="about-desc">默认射程 1 格；带「射程+X」的卡牌可攻击更远的敌人。</div></div>
+      <div class="about-item"><div class="about-kw">🏳 阵营</div><div class="about-desc"><b style="color:#fde047">神</b> · <b style="color:#93c5fd">民</b> · <b style="color:#fb923c">狼</b> · <b style="color:#c4b5fd">无</b></div></div>
       <div class="about-item"><div class="about-kw">🟣 行动花费</div><div class="about-desc">单位左下角的紫色圆圈显示该单位每次行动消耗的法力。</div></div>
-      <div class="about-item"><div class="about-kw">📦 牌库耗尽</div><div class="about-desc">牌库抽完后不再重新补牌，保持 0 张且额外抽牌时对总部造成2点伤害。</div></div>
-      <div class="about-item"><div class="about-kw">🔢 卡牌编号</div><div class="about-desc">每张卡牌拥有唯一的 16 进制编号，用于卡组字符串的导入/导出。</div></div>
-      <div class="about-item"><div class="about-kw">📤 导出格式</div><div class="about-desc"><code>图标|名称|编号编号编号...</code>，例如 <code>🐺|狼群突袭|10010102...</code></div></div>
+      <div class="about-item"><div class="about-kw">📦 牌库耗尽</div><div class="about-desc">牌库抽完后不再重新补牌，额外抽牌时对总部造成 2 点伤害。</div></div>
+      <div class="about-item"><div class="about-kw">🌐 联机</div><div class="about-desc">双方通过 6 位房间号连接；村庄方先手；角色由系统随机分配；双方都会播放动画。</div></div>
     </div>
     <button id="btn-about-close" class="btn btn-primary" style="align-self:center;">关闭</button>
   </div>
@@ -250,11 +255,21 @@
     <div class="settings-content">
       <div class="setting-item">
         <div class="setting-header">
+          <span class="setting-label">🎵 背景音乐音量</span>
+          <span class="setting-value" id="setting-music-value">35%</span>
+        </div>
+        <input type="range" id="setting-music" class="setting-slider"
+               min="0" max="100" step="1" value="35">
+        <div class="setting-hint">0 = 静音；音乐在游戏各处持续循环播放</div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-header">
           <span class="setting-label">🃏 卡牌飞行间隔</span>
           <span class="setting-value" id="setting-spawn-value">2.8s</span>
         </div>
         <input type="range" id="setting-spawn" class="setting-slider"
-              min="0.5" max="10" step="0.1" value="2.8">
+               min="0.5" max="10" step="0.1" value="2.8">
         <div class="setting-hint">数值越小，出现的越频繁（0.5s ～ 10s）</div>
       </div>
 
@@ -264,7 +279,7 @@
           <span class="setting-value" id="setting-drift-value">160px</span>
         </div>
         <input type="range" id="setting-drift" class="setting-slider"
-              min="0" max="400" step="10" value="160">
+               min="0" max="400" step="10" value="160">
         <div class="setting-hint">卡牌水平飞行时上下浮动的总范围（0 = 直线飞行）</div>
       </div>
 
@@ -279,15 +294,6 @@
         </label>
       </div>
 
-      <div class="setting-item">
-        <div class="setting-header">
-          <span class="setting-label">🎵 背景音乐音量</span>
-          <span class="setting-value" id="setting-music-value">35%</span>
-        </div>
-        <input type="range" id="setting-music" class="setting-slider"
-              min="0" max="100" step="1" value="35">
-        <div class="setting-hint">0 = 静音；音乐在游戏各处持续循环播放</div>
-      </div>
       <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;">
         <button id="btn-settings-reset" class="btn">恢复默认</button>
         <button id="btn-settings-close" class="btn btn-primary">关闭</button>

@@ -836,3 +836,9 @@ function showMechwolfFx(r, c) {
   fxLayer.appendChild(fx);
   setTimeout(() => fx.remove(), 1300);
 }
+/* =========================================================
+   ★ 客机移动动画（先把视觉位置放回 from，再动画到 to）
+   ========================================================= */
+async function playGuestMoveAnim(unit, fromR, fromC, toR, toC) {
+  /* 已在 network.js 中实现 */
+}

@@ -258,21 +258,20 @@ async function resolveAttack(attacker, target) {
   const range = attacker.range || 1;
   if (dist(attacker, target) > range) return;
 
-  /* ★ 圣骑士免疫敌方单位攻击 */
+  /* 圣骑士免疫敌方单位攻击 */
   if (target.untargetable && target.owner !== attacker.owner) return;
 
-  /* ★ 先消耗行动点和法力（无论攻击是否被「策」取消） */
+  /* 先消耗行动点和法力 */
   p.mana -= attacker.actionCost;
   attacker.actionsLeft--;
   attacker.attacksMade = (attacker.attacksMade || 0) + 1;
 
-  /* ★ 圈套检查 */
+  /* 圈套检查 */
   if (await checkSnare(attacker)) return;
 
   triggerSeerDraw(attacker);
 
   const originalTarget = target;
-  /* ★ 影刺：无视守护 */
   const guardian = attacker.ignoresGuardian ? null : findGuardian(target);
   const effectiveTarget = guardian || target;
 
@@ -298,6 +297,16 @@ async function resolveAttack(attacker, target) {
   };
   const effR = effectiveTarget.r, effC = effectiveTarget.c;
 
+  /* ★ 主机广播攻击事件给客机 */
+  if (G.net && G.net.mode === 'host') {
+    hostEvent({
+      type: 'attack',
+      attackerUid: attacker.uid,
+      targetUid: effectiveTarget.uid,
+      ranged: attacker.cardId === 'hunter' || attacker.cardId === 'witchhunter'
+    });
+  }
+
   if (attacker.cardId === 'hunter' || attacker.cardId === 'witchhunter') {
     await playRangedAttackAnimation(attacker, effectiveTarget);
   } else {
@@ -316,14 +325,14 @@ async function resolveAttack(attacker, target) {
   if (!snap.isBase && effectiveTarget.dead) showSkullAt(effR, effC);
   triggerOnActionEffect(attacker);
 
-  /* ★ 刺客：攻击总部后 +1 攻击 */
+  /* 刺客：攻击总部后 +1 攻击 */
   if (attacker.cardId === 'assassin' && snap.isBase && !attacker.dead) {
     attacker.atk += 1;
     log(`🥷 ${attacker.name}：攻击总部后攻击力 +1（现 ${attacker.atk}）`, attacker.owner);
     showStatChangeFx(attacker.r, attacker.c, 1, 'atk');
   }
 
-  /* ★ 蛀虫：攻击后弃掉对手牌库顶 2 张 */
+  /* 蛀虫：攻击后弃掉对手牌库顶 2 张 */
   if (attacker.cardId === 'borer' && !attacker.dead) {
     const enemyP = attacker.owner === 'player' ? G.ai : G.player;
     let dropped = 0;
@@ -446,7 +455,7 @@ async function witchDeathrattle(u) {
   render();
 }
 
-/* ★ 刺客亡语 */
+/* 刺客亡语 */
 async function assassinDeathrattle(u) {
   if (!G || G.gameOver) return;
   const src = u.lastDamageFrom
@@ -561,7 +570,7 @@ async function activateHut(hut, owner) {
   hut.hutUsedThisTurn = true;
 
   showHutFx(hut.r, hut.c);
-  log(`🏘️ ${owner === 'player' ? '你' : '狼人'}激活了舍（消耗 ${cost} 法力）`, owner);
+  log(`🏘️ ${owner === 'player' ? '🔵' : '🔴'}激活了舍（消耗 ${cost} 法力）`, owner);
   render();
   await sleep(420);
   if (!G || G.gameOver) return true;
@@ -633,11 +642,12 @@ async function activateHut(hut, owner) {
 }
 
 async function activateHutForPlayer(hut) {
-  if (!G || G.gameOver || G.turn !== 'player') return;
+  if (!G || G.gameOver) return;
+  if (G.turn !== G.mySide) return;
   if (G.busy || G.choiceMode || mulliganState) return;
   G.busy = true;
   try {
-    const ok = await activateHut(hut, 'player');
+    const ok = await activateHut(hut, G.mySide);
     if (!ok) playSound('error');
     else playSound('click');
   } finally { G.busy = false; }
@@ -823,43 +833,11 @@ async function triggerSchemesOnBaseDamage(hurtOwner, dmgAmount) {
 }
 
 /* =========================================================
-   使用"计"牌
+   使用"计"牌（内部调用，玩家入口已在 main.js）
    ========================================================= */
 async function useTacticCard(idx) {
-  if (!G || G.gameOver || G.turn !== 'player') return;
-  if (G.busy || G.choiceMode || mulliganState) return;
-  const card = G.player.hand[idx];
-  if (!card || card.type !== 'tactic') return;
-  if (card.summonCost > G.player.mana) { log('法力不足，无法使用该计', 'player'); return; }
-
-  const savedCard = card;
-  G.player.mana -= card.summonCost;
-  G.player.hand.splice(idx, 1);
-  log(`📜 你使用了计策：${card.name}`, 'player');
-  clearSelection();
-
-  G.pendingTactic = { card: savedCard, cost: card.summonCost, cancelled: false };
-
-  render();
-
-  await triggerSchemesOnEnemyTactic('player', card);
-
-  if (card.effect && card.effect.trigger) {
-    const fn = TACTIC_REGISTRY[card.effect.trigger];
-    if (typeof fn === 'function') {
-      try { await fn(card); } catch (err) { console.error(err); log(`⚠️ ${card.name} 使用异常`, 'player'); }
-    }
-  }
-
-  if (G.pendingTactic && G.pendingTactic.cancelled) {
-    G.player.mana += G.pendingTactic.cost;
-    if (G.player.hand.length < HAND_LIMIT) {
-      G.player.hand.push(savedCard);
-      log(`↩️ 已取消「${card.name}」，返还 ${G.pendingTactic.cost} 法力`, 'player');
-    }
-  }
-  G.pendingTactic = null;
-  render();
+  /* 该入口已迁移到 main.js；此处保留兼容 */
+  if (typeof window._useTacticCardMain === 'function') return window._useTacticCardMain(idx);
 }
 
 async function tacticForcedMarch() {
@@ -1026,7 +1004,7 @@ async function tacticMerchant(card) {
   render();
 }
 
-/* ★ 妥协 */
+/* 妥协 */
 async function tacticCompromise(card) {
   const user = G.turn;
   const enemy = user === 'player' ? 'ai' : 'player';
@@ -1035,7 +1013,7 @@ async function tacticCompromise(card) {
   const enemyLabel = enemy === 'player' ? '你' : '狼人';
 
   let choice = null;
-  const isHumanPlayer = (user === 'player') && !G.autoMode;
+  const isHumanPlayer = (user === G.mySide) && !G.autoMode;
   if (isHumanPlayer) {
     choice = await askCompromiseChoice();
   } else {
@@ -1110,7 +1088,7 @@ async function tacticCompromise(card) {
   render();
 }
 
-/* ★ 转圜 */
+/* 转圜 */
 async function tacticTurnaround(card) {
   const user = G.turn;
   const enemy = user === 'player' ? 'ai' : 'player';
@@ -1120,7 +1098,7 @@ async function tacticTurnaround(card) {
   if (!enemies.length) { log('⤴️ 转圜：没有敌方目标', user); return; }
 
   let target = null;
-  if (user === 'player' && !G.autoMode) {
+  if (user === G.mySide && !G.autoMode) {
     target = await askPlayerChooseEnemyTarget(enemies);
   } else {
     target = enemies.slice().sort((a, b) => {
@@ -1153,7 +1131,7 @@ async function tacticTurnaround(card) {
   await sleep(300);
 }
 
-/* ★ 圣歌 */
+/* 圣歌 */
 async function tacticHymn() {
   const user = G.turn;
   const userLabel = user === 'player' ? '你' : '狼人';
@@ -1187,7 +1165,7 @@ async function tacticHymn() {
   await sleep(400);
 }
 
-/* ★ 休养生息 */
+/* 休养生息 */
 async function tacticRest() {
   const user = G.turn;
   const p = user === 'player' ? G.player : G.ai;
@@ -1215,7 +1193,7 @@ async function tacticRest() {
   }
 }
 
-/* ★ 贿赂 */
+/* 贿赂 */
 async function tacticBribe() {
   const user = G.turn;
   const enemy = user === 'player' ? 'ai' : 'player';
@@ -1242,7 +1220,7 @@ async function tacticBribe() {
   await sleep(320);
 }
 
-/* ★ 仓廪空虚 */
+/* 仓廪空虚 */
 async function tacticGranary() {
   const user = G.turn;
   const enemy = user === 'player' ? 'ai' : 'player';
@@ -1252,7 +1230,7 @@ async function tacticGranary() {
   if (!targets.length) { log('🏚️ 仓廪空虚：没有敌方目标', user); return; }
 
   let target = null;
-  if (user === 'player' && !G.autoMode) {
+  if (user === G.mySide && !G.autoMode) {
     target = await askPlayerChooseEnemyTarget(targets);
   } else {
     target = targets.slice().sort((a, b) => {
@@ -1273,7 +1251,7 @@ async function tacticGranary() {
   render();
 }
 
-/* ★ 机械狼 */
+/* 机械狼 */
 async function tacticMechwolf() {
   const user = G.turn;
   const userLabel = user === 'player' ? '你' : '狼人';
@@ -1283,10 +1261,9 @@ async function tacticMechwolf() {
   if (!targetable.length) { log('🐺 机械狼：没有可选择的单位', user); return; }
 
   let chosen = null;
-  if (user === 'player' && !G.autoMode) {
+  if (user === G.mySide && !G.autoMode) {
     chosen = await askPlayerChooseAnyUnit(targetable);
   } else {
-    /* AI：优先选择有亡语或部署效果的单位 */
     const score = u => {
       let s = 0;
       if (u.effect && u.effect.type === 'deathrattle') s += 10;
@@ -1304,14 +1281,12 @@ async function tacticMechwolf() {
   await sleep(400);
   if (!G || G.gameOver) return;
 
-  /* 触发亡语 */
   if (chosen.effect && chosen.effect.type === 'deathrattle' && !chosen.dead) {
     const fn = DEATHRATTLE_REGISTRY[chosen.effect.trigger];
     if (typeof fn === 'function') {
       try { await fn(chosen); } catch (err) { console.error(err); }
     }
   }
-  /* 触发部署效果 */
   if (!chosen.dead) {
     if (chosen.cardId === 'elder') await triggerElderSummon(chosen);
     else if (chosen.cardId === 'idiot') await triggerIdiotSummon(chosen);
@@ -1321,7 +1296,7 @@ async function tacticMechwolf() {
   render();
 }
 
-/* ★ 暴怒 */
+/* 暴怒 */
 async function tacticFury() {
   const user = G.turn;
   const userLabel = user === 'player' ? '你' : '狼人';
@@ -1341,7 +1316,9 @@ async function tacticFury() {
   }
 }
 
-/* ★ 对峙 */
+/* =========================================================
+   对峙
+   ========================================================= */
 async function standoffDraw(who) {
   const p = who === 'player' ? G.player : G.ai;
   if (!p.deck.length) return;

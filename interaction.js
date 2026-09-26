@@ -1,5 +1,5 @@
 /* =========================================================
-   interaction.js — 玩家操作
+   interaction.js — 玩家操作（支持联机）
    ========================================================= */
 
 function clearSelection() {
@@ -16,8 +16,8 @@ function updateHighlights() {
   G.attackHighlights = [];
   const u = G.selected;
   if (!u || u.isBase || u.silenced) return;
-  if (u.isHut) return;   /* ★ 舍不能移动或攻击 */
-  const p = u.owner === 'player' ? G.player : G.ai;
+  if (u.isHut) return;
+  const p = G[u.owner];
   if (u.actionsLeft <= 0 || p.mana < u.actionCost) return;
   if ((u.moveCount || 0) < (u.moveLimit || 99)) {
     for (const [dr, dc] of getMoveDirs(u)) {
@@ -33,7 +33,6 @@ function updateHighlights() {
         if (r === u.r && c === u.c) continue;
         const t = G.board[r][c];
         if (!t || t.owner === u.owner) continue;
-        /* ★ 圣骑士免疫敌方单位攻击 */
         if (t.untargetable && t.owner !== u.owner) continue;
         if (distForRange(u, { r, c }) <= range) {
           G.attackHighlights.push({ r, c });
@@ -43,12 +42,13 @@ function updateHighlights() {
   }
 }
 
-/* ★ 召唤范围：普通单位走己方区域；舍只能部署在友方单位周围 3×3 */
-function computeSummonSpots(card) {
+/* 召唤范围：舍 3×3；普通单位走己方区域 */
+function computeSummonSpots(card, side) {
+  side = side || G.mySide;
   const spots = [];
   if (card && card.type === 'hut') {
     const allies = G.units.filter(u =>
-      u.owner === 'player' && !u.isBase && !u.dead && !u.isHut
+      u.owner === side && !u.isBase && !u.dead && !u.isHut
     );
     const seen = new Set();
     for (const a of allies) {
@@ -67,15 +67,16 @@ function computeSummonSpots(card) {
     }
     return spots;
   }
-  for (let r = PLAYER_ZONE[0]; r <= PLAYER_ZONE[1]; r++)
+  const zone = side === 'player' ? PLAYER_ZONE : [0, 1];
+  for (let r = zone[0]; r <= zone[1]; r++)
     for (let c = 0; c < BOARD_COLS; c++)
       if (!G.board[r][c]) spots.push({ r, c });
   return spots;
 }
 
 function doMove(u, r, c) {
-  if (u.isHut) return false;   /* ★ 舍无法移动 */
-  const p = u.owner === 'player' ? G.player : G.ai;
+  if (u.isHut) return false;
+  const p = G[u.owner];
   if (u.silenced) return false;
   if (u.actionsLeft <= 0 || p.mana < u.actionCost) return false;
   if (G.board[r][c]) return false;
@@ -92,23 +93,29 @@ function doMove(u, r, c) {
   return true;
 }
 
-async function onHandClick(idx) {
+async function onHandClick(idx, side) {
+  side = side || G.mySide;
   if (!G || G.gameOver || G.busy) return;
   if (G.choiceMode || mulliganState) return;
-  if (G.turn !== 'player') return;
+  if (G.turn !== side) return;
 
-  const card = G.player.hand[idx];
+  /* 客机转发 */
+  if (G.net && G.net.mode === 'guest') {
+    guestSendAction({ type: 'handClick', idx });
+    return;
+  }
+
+  const me = G[side];
+  const card = me.hand[idx];
   if (!card) return;
-
   if (!card._handUid) card._handUid = ++handUidSeq;
 
-  /* 策卡：激活 / 取消激活 */
   if (isSchemeCard(card)) {
-    const active = isSchemeActive('player', card._handUid);
+    const active = isSchemeActive(side, card._handUid);
     if (active) {
-      deactivateScheme('player', card._handUid);
+      deactivateScheme(side, card._handUid);
     } else {
-      const ok = activateScheme('player', card._handUid);
+      const ok = activateScheme(side, card._handUid);
       if (!ok) playSound('error');
     }
     clearSelection();
@@ -116,44 +123,35 @@ async function onHandClick(idx) {
     return;
   }
 
-  /* 手牌再次点击取消选中 */
   if (G.selectedCardIdx === idx) {
-    clearSelection();
-    render();
-    return;
+    clearSelection(); render(); return;
   }
 
-  /* 法力不足 */
-  if (card.summonCost > G.player.mana) {
-    log('法力不足', 'player');
-    playSound('error');
-    return;
+  if (card.summonCost > me.mana) {
+    log('法力不足', side); playSound('error'); return;
   }
 
   if (card.type === 'tactic') {
     if (card.id === 'expandAdvantage') {
-      const myCount = G.units.filter(u => u.owner === 'player' && !u.isBase && !u.dead).length;
-      const enemyCount = G.units.filter(u => u.owner === 'ai' && !u.isBase && !u.dead).length;
+      const myCount = G.units.filter(u => u.owner === side && !u.isBase && !u.dead).length;
+      const enemyCount = G.units.filter(u => u.owner !== side && !u.isBase && !u.dead).length;
       if (myCount <= enemyCount) {
-        log(`📈 扩大优势：友方单位(${myCount}) 不多于敌方(${enemyCount})，无法使用`, 'player');
-        playSound('error');
-        return;
+        log(`📈 扩大优势：友方单位(${myCount}) 不多于敌方(${enemyCount})，无法使用`, side);
+        playSound('error'); return;
       }
     }
     await useTacticCard(idx);
     return;
   }
 
-  /* 单位 / 舍 */
   if (card.id === 'werewolf') {
     const sacrifices = G.units.filter(u =>
-      u.owner === 'player' && !u.isBase && !u.dead &&
+      u.owner === side && !u.isBase && !u.dead &&
       (u.faction === '民' || u.faction === '神')
     );
     if (!sacrifices.length) {
-      log('🩸 没有可献祭的友方民/神单位，无法召唤狼人', 'player');
-      playSound('error');
-      return;
+      log('🩸 没有可献祭的友方民/神单位，无法召唤狼人', side);
+      playSound('error'); return;
     }
   }
 
@@ -161,23 +159,30 @@ async function onHandClick(idx) {
   G.moveHighlights = [];
   G.attackHighlights = [];
   G.selectedCardIdx = idx;
-  G.summonHighlights = computeSummonSpots(card);
+  G.summonHighlights = computeSummonSpots(card, side);
 
   if (!G.summonHighlights.length) {
     log(card.type === 'hut'
       ? '🏘️ 没有可部署舍的位置（需友方单位周围 3×3 空位）'
-      : '己方区域已满，无法召唤', 'player');
+      : '己方区域已满，无法召唤', side);
     playSound('error');
-    G.selectedCardIdx = null;
-    G.summonHighlights = [];
+    G.selectedCardIdx = null; G.summonHighlights = [];
   } else {
     playSound('click');
   }
   render();
 }
 
-async function onCellClick(r, c) {
+async function onCellClick(r, c, side) {
+  side = side || G.mySide;
   if (!G || G.gameOver || mulliganState) return;
+
+  /* 客机转发 */
+  if (G.net && G.net.mode === 'guest') {
+    guestSendAction({ type: 'cellClick', r, c });
+    return;
+  }
+
   if (G.choiceMode && G.choiceMode.active) {
     const u = G.board[r][c];
     if (u && G.choiceMode.candidates.some(x => x.uid === u.uid)) {
@@ -189,12 +194,12 @@ async function onCellClick(r, c) {
     }
     return;
   }
-  if (G.busy || G.turn !== 'player') return;
+  if (G.busy || G.turn !== side) return;
   const clicked = G.board[r][c];
 
   if (G.selectedCardIdx !== null) {
     if (!clicked && G.summonHighlights.some(h => h.r === r && h.c === c)) {
-      await playerSummon(G.selectedCardIdx, r, c);
+      await playerSummon(G.selectedCardIdx, r, c, side);
       return;
     }
   }
@@ -202,15 +207,19 @@ async function onCellClick(r, c) {
     const u = G.selected;
     G.busy = true;
     try {
-      const p = u.owner === 'player' ? G.player : G.ai;
+      const p = G[u.owner];
 
-      /* ★ 先消耗行动点与法力（即使陷阱触发，行动次数也已消耗） */
+      /* 先扣费、扣行动 */
       p.mana -= u.actionCost;
       u.actionsLeft--;
       u.moveCount = (u.moveCount || 0) + 1;
 
-      /* ★ 陷阱检查：即使触发，行动次数已消耗 */
+      /* 陷阱检查 */
       if (!(await checkPitfall(u))) {
+        /* 主机广播移动事件 */
+        if (G.net && G.net.mode === 'host') {
+          hostEvent({ type: 'move', uid: u.uid, fromR: u.r, fromC: u.c, toR: r, toC: c });
+        }
         await playMoveAnimation(u, u.r, u.c, r, c);
         G.board[u.r][u.c] = null;
         u.r = r; u.c = c;
@@ -222,7 +231,7 @@ async function onCellClick(r, c) {
     updateHighlights(); render();
     return;
   }
-  if (G.selected && clicked && clicked.owner !== 'player' &&
+  if (G.selected && clicked && clicked.owner !== side &&
       G.attackHighlights.some(h => h.r === r && h.c === c)) {
     G.busy = true;
     try { await resolveAttack(G.selected, clicked); }
@@ -230,8 +239,7 @@ async function onCellClick(r, c) {
     if (!G.gameOver) { updateHighlights(); render(); }
     return;
   }
-  if (clicked && clicked.owner === 'player' && !clicked.isBase) {
-    /* ★ 舍：点击即激活 */
+  if (clicked && clicked.owner === side && !clicked.isBase) {
     if (clicked.isHut) {
       await activateHutForPlayer(clicked);
       return;
@@ -248,25 +256,26 @@ async function onCellClick(r, c) {
   clearSelection(); render();
 }
 
-async function playerSummon(idx, r, c) {
-  const card = G.player.hand[idx];
-  if (!card || card.summonCost > G.player.mana) return;
+async function playerSummon(idx, r, c, side) {
+  side = side || G.mySide;
+  const me = G[side];
+  const card = me.hand[idx];
+  if (!card || card.summonCost > me.mana) return;
   if (card.id === 'werewolf') {
     const sacrifices = G.units.filter(u =>
-      u.owner === 'player' && !u.isBase && !u.dead &&
+      u.owner === side && !u.isBase && !u.dead &&
       (u.faction === '民' || u.faction === '神')
     );
-    if (!sacrifices.length) { log('🩸 没有可献祭的友方民/神单位，无法召唤狼人', 'player'); return; }
+    if (!sacrifices.length) { log('🩸 没有可献祭的友方民/神单位，无法召唤狼人', side); return; }
   }
-  G.player.mana -= card.summonCost;
-  G.player.hand.splice(idx, 1);
-  const u = createUnit(card, 'player', r, c);
+  me.mana -= card.summonCost;
+  me.hand.splice(idx, 1);
+  const u = createUnit(card, side, r, c);
   placeUnit(u);
   clearSelection(); render();
   await playSummonAnimation(u);
-  log(`你召唤了 ${card.name}`, 'player');
+  log(`${side === 'player' ? '🔵' : '🔴'} 召唤了 ${card.name}`, side);
 
-  /* ★ 埋伏检查 */
   await checkAmbush(u);
   if (!G || G.gameOver) return;
   if (u.dead) return;

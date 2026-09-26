@@ -46,8 +46,8 @@ function createUnit(card, owner, r, c) {
     attackLimit: isHut ? 0 : (card.attackLimit || 99), attacksMade: 0,
     noRecoil: !!card.noRecoil,
     diagonal: !!card.diagonal,
-    ignoresGuardian: !!card.ignoresGuardian,   /* ★ 影刺 */
-    untargetable: !!card.untargetable,         /* ★ 圣骑士 */
+    ignoresGuardian: !!card.ignoresGuardian,
+    untargetable: !!card.untargetable,
     hasOnAction: !!(card.effect && card.effect.type === 'onAction' && card.id === 'guard'),
     swift, maxActions,
     actionsLeft: isHut ? 0 : (swift ? maxActions : 0),
@@ -72,7 +72,6 @@ function drawCard(who, options) {
   const isExtra = !!options.extra;
   const p = who === 'player' ? G.player : G.ai;
 
-  /* ★ 清廉：敌方回合中，己方的额外抽牌被拦截 */
   if (isExtra && !G.gameOver) {
     if (p.noExtraDrawUntilOwnTurn) return;
     if (G.turn !== who) {
@@ -140,7 +139,11 @@ async function newGame(opts = {}) {
     const aiTemplate = AI_DECKS[Math.floor(Math.random() * AI_DECKS.length)];
     const aiCards = aiTemplate.cards.map(id => ({ ...CARD_MAP[id] }));
 
-    const firstPlayer = opts.firstPlayer || (Math.random() < 0.5 ? 'player' : 'ai');
+    /* 联机：村庄先手；单机：随机 */
+    let firstPlayer;
+    if (opts.firstPlayer) firstPlayer = opts.firstPlayer;
+    else if (opts.net) firstPlayer = 'player';
+    else firstPlayer = Math.random() < 0.5 ? 'player' : 'ai';
 
     G = {
       board: Array.from({ length: BOARD_ROWS }, () => Array(BOARD_COLS).fill(null)),
@@ -153,6 +156,8 @@ async function newGame(opts = {}) {
       stats: { playerKills: 0, aiKills: 0, totalTurns: 0 },
       aiDeckName: aiTemplate.name,
       firstPlayer,
+      mySide: opts.mySide || 'player',
+      net: opts.net || null,
       autoMode: !!opts.autoMode,
       evalMode: !!opts.evalMode,
       player: { mana: 0, maxMana: 0, hand: [], deck: shuffle(playerCards.slice()),
@@ -182,7 +187,7 @@ async function newGame(opts = {}) {
 
     if (!check.valid) log(`⚠️ 你的卡组不合法（${check.reason}），已自动修正`, 'player');
 
-    if (!opts.skipMulligan) {
+    if (!opts.skipMulligan && !opts.net) {
       await runMulliganPhase();
     } else {
       aiMulligan();
@@ -191,11 +196,8 @@ async function newGame(opts = {}) {
 
     render();
     log(`🐺 狼人使用卡组：${aiTemplate.name}`, 'ai');
-    if (firstPlayer === 'player') {
-      log(`🎲 你获得先手（起手 3 张）`, 'player');
-    } else {
-      log(`🎲 狼人获得先手，你为后手（起手 5 张）`, 'player');
-    }
+    if (firstPlayer === 'player') log(`🎲 村庄先手`, 'player');
+    else log(`🎲 狼穴先手`, 'player');
     startTurn(firstPlayer);
   } finally {
     gameStarting = false;
@@ -255,10 +257,9 @@ function startTurn(who) {
   p.maxMana = Math.min(MAX_MANA, 2 + p.turnCount);
   p.mana = p.maxMana;
 
-  /* ★ 清廉 flag 在本回合开始时重置 */
   p.noExtraDrawUntilOwnTurn = false;
 
-  /* ★ 暴怒：在使用者的下个回合开始时，恢复临时攻击并 -1 防御 */
+  /* 暴怒：在使用者的下个回合开始时，恢复临时攻击并 -1 防御 */
   G.units.slice().forEach(u => {
     if (u.furyMark === who && !u.isBase && !u.dead) {
       if (u.tempAtk) {
@@ -301,6 +302,9 @@ function startTurn(who) {
   clearSelection();
   render();
 
+  /* 联机模式：不自动触发 AI */
+  if (G.net) return;
+
   if (who === 'ai') {
     setTimeout(() => { AI_SIDE = 'ai'; aiTurn(); }, 650);
   } else if (G && G.autoMode) {
@@ -310,6 +314,13 @@ function startTurn(who) {
 
 function endTurn() {
   if (!G || G.gameOver) return;
+
+  /* ★ 客机点击结束回合 → 转发给主机 */
+  if (G.net && G.net.mode === 'guest') {
+    guestSendAction({ type: 'endTurn' });
+    return;
+  }
+
   const who = G.turn;
   G.units.forEach(u => { if (u.owner === who) u.silenced = false; });
   clearForcedMarchEffects(who);
@@ -373,4 +384,59 @@ function endGame(winner) {
   `;
 
   $('#overlay').classList.remove('hidden');
+}
+
+/* =========================================================
+   ★ 联机序列化 / 反序列化
+   ========================================================= */
+function serializeG(g) {
+  if (!g) return null;
+  return JSON.parse(JSON.stringify({
+    board: g.board.map(row => row.map(u => u ? u.uid : null)),
+    units: g.units,
+    turn: g.turn,
+    gameOver: g.gameOver,
+    activeSchemes: g.activeSchemes,
+    stats: g.stats,
+    aiDeckName: g.aiDeckName,
+    firstPlayer: g.firstPlayer,
+    player: {
+      mana: g.player.mana, maxMana: g.player.maxMana,
+      hand: g.player.hand, deck: g.player.deck,
+      turnCount: g.player.turnCount,
+      noExtraDrawUntilOwnTurn: g.player.noExtraDrawUntilOwnTurn
+    },
+    ai: {
+      mana: g.ai.mana, maxMana: g.ai.maxMana,
+      hand: g.ai.hand, deck: g.ai.deck,
+      turnCount: g.ai.turnCount,
+      noExtraDrawUntilOwnTurn: g.ai.noExtraDrawUntilOwnTurn
+    }
+  }));
+}
+
+function deserializeG(obj, mySide, net) {
+  if (!obj) return null;
+  const unitMap = new Map();
+  obj.units.forEach(u => unitMap.set(u.uid, u));
+  const board = obj.board.map(row => row.map(uid => uid == null ? null : unitMap.get(uid)));
+  return {
+    board,
+    units: Array.from(unitMap.values()),
+    turn: obj.turn,
+    gameOver: obj.gameOver,
+    busy: false,
+    selected: null, selectedCardIdx: null,
+    summonHighlights: [], moveHighlights: [], attackHighlights: [],
+    choiceMode: null, pendingTactic: null,
+    activeSchemes: obj.activeSchemes,
+    stats: obj.stats,
+    aiDeckName: obj.aiDeckName,
+    firstPlayer: obj.firstPlayer,
+    autoMode: false, evalMode: false,
+    mySide: mySide,
+    net: net,
+    player: obj.player,
+    ai: obj.ai
+  };
 }
