@@ -176,6 +176,13 @@ const HAND_START_SECOND = 5;    /* 后手起手牌数 */
 let AI_SIDE = 'ai';
 function getOpponentSide() { return AI_SIDE === 'ai' ? 'player' : 'ai'; }
 
+/* 该方是否由本地玩家操作（AI 托管 / 双方 AI 评估时为 false） */
+function isHumanSide(owner) {
+  if (!G) return false;
+  if (G.autoMode || G.evalMode) return false;
+  return owner === G.mySide;
+}
+
 /* =========================================================
    ★ 背景音乐引擎（manifest 自动发现）
    ---------------------------------------------------------

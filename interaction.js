@@ -140,7 +140,7 @@ async function onHandClick(idx, side) {
         playSound('error'); return;
       }
     }
-    await useTacticCard(idx);
+    await useTacticCard(idx, side);
     return;
   }
 

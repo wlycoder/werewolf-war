@@ -244,14 +244,28 @@ function toggleMulliganCard(idx) {
   renderMulligan();
 }
 function aiMulligan() {
-  const hand = G.ai.hand; if (!hand.length || !G.ai.deck.length) return;
-  let maxIdx = 0;
-  hand.forEach((c,i) => { if (c.summonCost > hand[maxIdx].summonCost) maxIdx = i; });
-  if (hand[maxIdx].summonCost >= 4) {
-    const removed = hand.splice(maxIdx,1)[0];
+  const hand = G.ai.hand;
+  if (!hand.length || !G.ai.deck.length) return;
+
+  /* 起手调度：保留低费可用牌，换掉卡手的高费牌（最多 2 张） */
+  const keepScore = c => {
+    if (!c) return -99;
+    if (c.type === 'tactic' || c.type === 'scheme') return 3 - (c.summonCost || 0);
+    return 12 - (c.summonCost || 0) * 2 + (c.atk || 0) * 0.5 + (c.def || 0) * 0.4;
+  };
+  const cheap = hand.filter(c => (c.summonCost || 0) <= 2).length;
+  const maxReplace = cheap >= 3 ? 0 : (cheap >= 2 ? 1 : 2);
+
+  for (let n = 0; n < maxReplace; n++) {
+    if (!G.ai.deck.length) break;
+    const ranked = hand.map((c, i) => ({ c, i, s: keepScore(c) })).sort((a, b) => a.s - b.s);
+    const worst = ranked[0];
+    if (!worst || worst.s >= 6) break;
+    const removed = hand.splice(worst.i, 1)[0];
     G.ai.deck.push(removed);
     G.ai.deck = shuffle(G.ai.deck);
-    if (G.ai.deck.length) G.ai.hand.push(G.ai.deck.pop());
+    const drawn = G.ai.deck.pop();
+    if (drawn) hand.push(drawn);
   }
 }
 

@@ -175,9 +175,20 @@ function guestSendAction(action) {
 
 /* 客机：待回放的事件队列 */
 let _pendingEvents = [];
+let _pendingEventTimer = null;
+
 function guestQueueEvent(ev) {
   _pendingEvents.push(ev);
   if (_pendingEvents.length > 80) _pendingEvents.shift();
+  /* ★ 250ms 内若未收到 state，直接回放事件（避免遗漏） */
+  if (_pendingEventTimer) clearTimeout(_pendingEventTimer);
+  _pendingEventTimer = setTimeout(() => {
+    if (_pendingEvents.length && G && G.units) {
+      const events = _pendingEvents.slice();
+      _pendingEvents = [];
+      playGuestAnims(G, events, G).catch(err => console.error('[net] 超时回放异常', err));
+    }
+  }, 250);
 }
 
 /* =========================================================
@@ -187,6 +198,8 @@ let _lastGuestG = null;
 
 function guestApplyState(state) {
   if (!G || !G.net || G.net.mode !== 'guest') return;
+
+  if (_pendingEventTimer) { clearTimeout(_pendingEventTimer); _pendingEventTimer = null; }
 
   const oldG = G;
   const events = _pendingEvents.slice();
@@ -198,10 +211,7 @@ function guestApplyState(state) {
   G = newG;
   _lastGuestG = JSON.parse(JSON.stringify(state));
 
-  /* 先渲染到新状态 */
   render();
-
-  /* 再异步回放动画 */
   playGuestAnims(oldG, events, newG).catch(err => console.error('[net] 动画回放异常', err));
 }
 

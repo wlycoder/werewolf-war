@@ -22,42 +22,46 @@ function showChoiceBanner(icon, text) {
 }
 function hideChoiceBanner() { $('#choice-banner').classList.add('hidden'); }
 
-function askPlayerChooseAlly(allies) {
+function _askChoice(kind, units, color, bannerIcon, bannerText) {
+  /* ★ 主机代客机执行 → 通过网络让客机选择 */
+  if (G.net && G.net.mode === 'host' && G.turn !== G.mySide) {
+    return new Promise(resolve => {
+      G.net._choiceResolve = resolve;
+      G.net._choiceKind = kind;
+      netSend({
+        type: 'choiceRequest',
+        kind,
+        color,
+        bannerIcon,
+        bannerText,
+        candidates: units.map(u => u.uid)
+      });
+    });
+  }
+  /* 本地选择 */
   return new Promise(resolve => {
-    G.choiceMode = { active: true, candidates: allies.slice(), resolve, color: 'white' };
-    showChoiceBanner('🔮', '魔术师亡语：点击一个白光高亮的友方单位（含自身）');
+    G.choiceMode = { active: true, candidates: units.slice(), resolve, color };
+    showChoiceBanner(bannerIcon, bannerText);
     render();
   });
+}
+
+function askPlayerChooseAlly(allies) {
+  return _askChoice('any', allies, 'white', '🔮', '魔术师亡语：点击一个白光高亮的友方单位（含自身）');
 }
 function askPlayerChooseEnemy(enemies) {
-  return new Promise(resolve => {
-    const pool = enemies.filter(u => !(u.untargetable));
-    G.choiceMode = { active: true, candidates: pool.slice(), resolve, color: 'white' };
-    showChoiceBanner('🚫', '禁言长老：点击一个白光高亮的敌方单位（不含总部）');
-    render();
-  });
+  const pool = enemies.filter(u => !u.untargetable);
+  return _askChoice('enemy', pool, 'white', '🚫', '禁言长老：点击一个白光高亮的敌方单位（不含总部）');
 }
 function askPlayerChooseAnyUnit(units) {
-  return new Promise(resolve => {
-    G.choiceMode = { active: true, candidates: units.slice(), resolve, color: 'white' };
-    showChoiceBanner('🤤', '请点击一个白光高亮的单位（不含总部）');
-    render();
-  });
+  return _askChoice('any', units, 'white', '🤤', '请点击一个白光高亮的单位（不含总部）');
 }
 function askPlayerChooseSacrifice(units) {
-  return new Promise(resolve => {
-    G.choiceMode = { active: true, candidates: units.slice(), resolve, color: 'red' };
-    showChoiceBanner('🩸', '血祭：点击一个红光高亮的友方民/神单位献祭');
-    render();
-  });
+  return _askChoice('sacrifice', units, 'red', '🩸', '血祭：点击一个红光高亮的友方民/神单位献祭');
 }
 function askPlayerChooseEnemyTarget(enemies) {
-  return new Promise(resolve => {
-    const pool = enemies.filter(u => !(u.untargetable));
-    G.choiceMode = { active: true, candidates: pool.slice(), resolve, color: 'white' };
-    showChoiceBanner('🎯', '点击一个白光高亮的敌方目标（含总部）');
-    render();
-  });
+  const pool = enemies.filter(u => !u.untargetable);
+  return _askChoice('enemyTarget', pool, 'white', '🎯', '点击一个白光高亮的敌方目标（含总部）');
 }
 
 function render() {

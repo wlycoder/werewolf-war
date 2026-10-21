@@ -256,7 +256,7 @@ async function resolveAttack(attacker, target) {
   if (attacker.actionsLeft <= 0 || p.mana < attacker.actionCost) return;
   if ((attacker.attacksMade || 0) >= (attacker.attackLimit || 99)) return;
   const range = attacker.range || 1;
-  if (dist(attacker, target) > range) return;
+  if (distForRange(attacker, target) > range) return;
 
   /* 圣骑士免疫敌方单位攻击 */
   if (target.untargetable && target.owner !== attacker.owner) return;
@@ -392,9 +392,9 @@ async function magicianDeathrattle(u) {
   const allies = G.units.filter(x => x.owner === u.owner && !x.isBase);
   if (!allies.length) return;
   let chosen = null;
-  if (u.owner === 'player') chosen = await askPlayerChooseAlly(allies);
+  if (isHumanSide(u.owner)) chosen = await askPlayerChooseAlly(allies);
   else {
-    const available = allies.filter(x => !x.returnToHand);
+    const available = allies.filter(x => !x.returnToHand && !x.isHut);
     const pool = available.length ? available : allies;
     chosen = pool.slice().sort((a,b) => unitValue(b) - unitValue(a))[0];
     await sleep(280);
@@ -425,7 +425,7 @@ async function bomberDeathrattle(u) {
 }
 async function witchDeathrattle(u) {
   let choice = null;
-  if (u.owner === 'player') choice = await askWitchChoice();
+  if (isHumanSide(u.owner)) choice = await askWitchChoice();
   else {
     const myBase = G.units.find(x => x.owner === u.owner && x.isBase);
     const enemyBase = G.units.find(x => x.owner !== u.owner && x.isBase);
@@ -491,7 +491,7 @@ async function triggerElderSummon(u) {
   const enemies = G.units.filter(x => x.owner !== u.owner && !x.dead && !x.isBase && !x.untargetable);
   if (!enemies.length) return;
   let chosen = null;
-  if (u.owner === 'player') chosen = await askPlayerChooseEnemy(enemies);
+  if (isHumanSide(u.owner)) chosen = await askPlayerChooseEnemy(enemies);
   else { chosen = enemies.slice().sort((a,b)=>threatScore(b)-threatScore(a))[0]; await sleep(320); }
   if (!chosen || G.gameOver) return;
   u.silenceTargetUid = chosen.uid;
@@ -502,9 +502,9 @@ async function triggerIdiotSummon(u) {
   const allUnits = G.units.filter(x => !x.dead && !x.isBase && x !== u && !(x.untargetable && x.owner !== u.owner));
   if (!allUnits.length) return;
   let chosen = null;
-  if (u.owner === 'player') chosen = await askPlayerChooseAnyUnit(allUnits);
+  if (isHumanSide(u.owner)) chosen = await askPlayerChooseAnyUnit(allUnits);
   else {
-    const enemies = allUnits.filter(x => x.owner !== u.owner);
+    const enemies = allUnits.filter(x => x.owner !== u.owner && !x.isHut);
     chosen = (enemies.length ? enemies : allUnits).slice().sort((a,b)=>threatScore(b)-threatScore(a))[0];
     await sleep(320);
   }
@@ -517,9 +517,9 @@ async function triggerCupidSummon(u) {
   const allUnits = G.units.filter(x => !x.dead && !x.isBase && x !== u && !(x.untargetable && x.owner !== u.owner));
   if (!allUnits.length) return;
   let chosen = null;
-  if (u.owner === 'player') chosen = await askPlayerChooseAnyUnit(allUnits);
+  if (isHumanSide(u.owner)) chosen = await askPlayerChooseAnyUnit(allUnits);
   else {
-    const allies = allUnits.filter(x => x.owner === u.owner);
+    const allies = allUnits.filter(x => x.owner === u.owner && !x.isHut);
     const pool = allies.length ? allies : allUnits;
     chosen = pool.slice().sort((a,b)=>unitValue(b)-unitValue(a))[0];
     await sleep(320);
@@ -537,8 +537,13 @@ async function triggerWolfSummon(wolf) {
   );
   if (!candidates.length) { log(`🩸 ${wolf.name} 没有可献祭的友方民/神单位，召唤失败`, wolf.owner); return false; }
   let chosen = null;
-  if (wolf.owner === 'player') chosen = await askPlayerChooseSacrifice(candidates);
-  else { chosen = candidates.slice().sort((a,b)=>unitValue(a)-unitValue(b))[0]; await sleep(320); }
+  if (isHumanSide(wolf.owner)) chosen = await askPlayerChooseSacrifice(candidates);
+  else {
+    /* 优先献祭非舍单位，其次才是价值最低的单位 */
+    chosen = candidates.slice().sort((a,b) =>
+      (a.isHut ? 1 : 0) - (b.isHut ? 1 : 0) || unitValue(a) - unitValue(b))[0];
+    await sleep(320);
+  }
   if (!chosen || G.gameOver) return false;
   log(`🩸 ${wolf.name} 献祭了 ${chosen.name}`, wolf.owner);
   showBloodFx(chosen.r, chosen.c);
@@ -618,7 +623,7 @@ async function activateHut(hut, owner) {
     log(`🏘️ 舍：牌库无单位，随机生成 ${picks.map(x => x.name).join('、')}`, owner);
 
     let chosen = null;
-    if (owner === 'player' && !G.autoMode) {
+    if (isHumanSide(owner)) {
       chosen = await askPlayerChooseHutReward(picks);
     } else {
       chosen = picks.slice().sort((a, b) => (b.summonCost || 0) - (a.summonCost || 0))[0];
@@ -1101,7 +1106,11 @@ async function tacticTurnaround(card) {
   if (user === G.mySide && !G.autoMode) {
     target = await askPlayerChooseEnemyTarget(enemies);
   } else {
-    target = enemies.slice().sort((a, b) => {
+    const baseTarget = enemies.find(t => t.isBase);
+    const killable = enemies.filter(t => !t.isBase && t.def <= 2);
+    if (baseTarget && baseTarget.hp <= 2) target = baseTarget;
+    else if (killable.length) target = killable.slice().sort((a, b) => threatScore(b) - threatScore(a))[0];
+    else target = enemies.slice().sort((a, b) => {
       const av = a.isBase ? a.hp : a.def;
       const bv = b.isBase ? b.hp : b.def;
       return av - bv;
@@ -1233,7 +1242,12 @@ async function tacticGranary() {
   if (user === G.mySide && !G.autoMode) {
     target = await askPlayerChooseEnemyTarget(targets);
   } else {
-    target = targets.slice().sort((a, b) => {
+    const dmgNow = Math.max(0, 9 - enemyP.hand.length);
+    const baseTarget = targets.find(t => t.isBase);
+    const killable = targets.filter(t => !t.isBase && t.def <= dmgNow);
+    if (baseTarget && baseTarget.hp <= dmgNow) target = baseTarget;
+    else if (killable.length) target = killable.slice().sort((a, b) => threatScore(b) - threatScore(a))[0];
+    else target = targets.slice().sort((a, b) => {
       const av = a.isBase ? a.hp : a.def;
       const bv = b.isBase ? b.hp : b.def;
       return av - bv;
@@ -1256,7 +1270,7 @@ async function tacticMechwolf() {
   const user = G.turn;
   const userLabel = user === 'player' ? '你' : '狼人';
 
-  const allUnits = G.units.filter(u => !u.dead && !u.isBase);
+  const allUnits = G.units.filter(u => !u.dead && !u.isBase && !u.isHut);
   const targetable = allUnits.filter(u => !(u.untargetable && u.owner !== user));
   if (!targetable.length) { log('🐺 机械狼：没有可选择的单位', user); return; }
 
@@ -1264,11 +1278,19 @@ async function tacticMechwolf() {
   if (user === G.mySide && !G.autoMode) {
     chosen = await askPlayerChooseAnyUnit(targetable);
   } else {
+    /* 优先触发己方收益最高的效果；触发敌方效果通常弊大于利 */
     const score = u => {
       let s = 0;
-      if (u.effect && u.effect.type === 'deathrattle') s += 10;
-      if (['elder','idiot','cupid','werewolf'].includes(u.cardId)) s += 8;
-      if (u.owner === user) s += 2;
+      if (u.owner !== user) s -= 20;
+      else {
+        if (u.cardId === 'magician') s += 18;
+        if (u.cardId === 'cupid') s += 14;
+        if (u.cardId === 'elder') s += 12;
+        if (u.cardId === 'witch') s += 10;
+        if (u.cardId === 'idiot') s += 8;
+        if (u.cardId === 'bomber') s += 4;
+        if (u.cardId === 'werewolf') s -= 12;
+      }
       return s;
     };
     chosen = targetable.slice().sort((a,b) => score(b) - score(a))[0];

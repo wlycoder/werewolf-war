@@ -310,33 +310,33 @@ function askPlayerChooseHutReward(cards) {
 /* =========================================================
    ★ 使用"计"牌（支持取消回滚 + 联机）
    ========================================================= */
-async function useTacticCard(idx) {
+async function useTacticCard(idx, side) {
   if (!G || G.gameOver) return;
-  const mySide = G.mySide;
-  if (G.turn !== mySide) return;
+  side = side || G.turn;              /* ★ 用当前回合方，而非 G.mySide */
+  if (G.turn !== side) return;
   if (G.busy || G.choiceMode || mulliganState) return;
 
-  const me = G[mySide];
+  const me = G[side];                 /* ★ 用 side 取手牌 */
   const card = me.hand[idx];
   if (!card || card.type !== 'tactic') return;
-  if (card.summonCost > me.mana) { log('法力不足，无法使用该计', mySide); return; }
+  if (card.summonCost > me.mana) { log('法力不足，无法使用该计', side); return; }
 
   const savedCard = card;
   me.mana -= card.summonCost;
   me.hand.splice(idx, 1);
-  log(`📜 ${mySide === 'player' ? '🔵' : '🔴'} 使用了计策：${card.name}`, mySide);
+  log(`📜 ${side === 'player' ? '🔵' : '🔴'} 使用了计策：${card.name}`, side);
   clearSelection();
 
   G.pendingTactic = { card: savedCard, cost: card.summonCost, cancelled: false };
 
   render();
 
-  await triggerSchemesOnEnemyTactic(mySide, card);
+  await triggerSchemesOnEnemyTactic(side, card);
 
   if (card.effect && card.effect.trigger) {
     const fn = TACTIC_REGISTRY[card.effect.trigger];
     if (typeof fn === 'function') {
-      try { await fn(card); } catch (err) { console.error(err); log(`⚠️ ${card.name} 使用异常`, mySide); }
+      try { await fn(card); } catch (err) { console.error(err); log(`⚠️ ${card.name} 使用异常`, side); }
     }
   }
 
@@ -344,7 +344,7 @@ async function useTacticCard(idx) {
     me.mana += G.pendingTactic.cost;
     if (me.hand.length < HAND_LIMIT) {
       me.hand.push(savedCard);
-      log(`↩️ 已取消「${card.name}」，返还 ${G.pendingTactic.cost} 法力`, mySide);
+      log(`↩️ 已取消「${card.name}」，返还 ${G.pendingTactic.cost} 法力`, side);
     }
   }
   G.pendingTactic = null;
